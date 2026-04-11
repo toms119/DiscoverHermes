@@ -214,6 +214,21 @@ db.exec(`
   );
 `);
 
+// ---------- github stats snapshot ----------
+// Daily snapshot of Hermes agent GitHub repo stats from star-history.com
+db.exec(`
+  CREATE TABLE IF NOT EXISTS github_stats (
+    date         TEXT PRIMARY KEY,
+    stars        INTEGER NOT NULL,
+    forks        INTEGER NOT NULL,
+    contributors INTEGER,
+    global_rank  INTEGER,
+    weekly_stars INTEGER,
+    weekly_pushes INTEGER,
+    weekly_issues_closed INTEGER
+  );
+`);
+
 // ---------- living-database updates ----------
 // Each submission can have a timeline of short "what's new" updates the
 // author's agent pushes over time. Rejected updates are hard-deleted
@@ -1544,7 +1559,57 @@ app.get('/api/stats', (_req, res) => {
     daily,
     cumulative,
     cumulative_tokens: cumulativeTokens,
+
+    // GitHub repo stats — latest snapshot from github_stats table
+    github: one(`SELECT * FROM github_stats ORDER BY date DESC LIMIT 1`),
+    github_history: many(`SELECT date, stars, forks, contributors, global_rank FROM github_stats ORDER BY date ASC LIMIT 90`),
   });
+});
+
+// ---------- admin: update github stats ----------
+// POST /api/admin/github-stats with x-admin-token
+// Fetches from star-history.com and saves daily snapshot
+app.post('/api/admin/github-stats', smallJson, async (req, res) => {
+  const auth = req.get('x-admin-token') || req.query.token || (req.body && req.body.token);
+  if (!ADMIN_TOKEN || auth !== ADMIN_TOKEN) {
+    return res.status(401).json({ error: 'unauthorized' });
+  }
+
+  // Parse star-history.com page for stats
+  const fetch = (await import('node:fetch')).default;
+  const resp = await fetch('https://www.star-history.com/nousresearch/hermes-agent');
+  const html = await resp.text();
+
+  // Extract stats using regex
+  const starsMatch = html.match(/([\d.]+)k\s*Stars/);
+  const forksMatch = html.match(/([\d.]+)k\s*Forks/);
+  const contributorsMatch = html.match(/(\d+)\s*Contributors/);
+  const rankMatch = html.match(/Global Rank\s*#(\d+)/);
+  const weeklyStarsMatch = html.match(/New stars\s*\+?([\d.]+k)/);
+  const pushesMatch = html.match(/(\d+)\s*Pushes/);
+  const issuesMatch = html.match(/Issues closed\s*(\d+)/);
+
+  const parseK = (m) => m ? Math.round(parseFloat(m[1]) * 1000) : 0;
+
+  const stats = {
+    stars: parseK(starsMatch),
+    forks: parseK(forksMatch),
+    contributors: contributorsMatch ? parseInt(contributorsMatch[1]) : 0,
+    global_rank: rankMatch ? parseInt(rankMatch[1]) : null,
+    weekly_stars: parseK(weeklyStarsMatch),
+    weekly_pushes: pushesMatch ? parseInt(pushesMatch[1]) : 0,
+    weekly_issues_closed: issuesMatch ? parseInt(issuesMatch[1]) : 0,
+  };
+
+  const today = new Date().toISOString().slice(0, 10);
+  db.prepare(`
+    INSERT OR REPLACE INTO github_stats
+      (date, stars, forks, contributors, global_rank, weekly_stars, weekly_pushes, weekly_issues_closed)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(today, stats.stars, stats.forks, stats.contributors, stats.global_rank,
+         stats.weekly_stars, stats.weekly_pushes, stats.weekly_issues_closed);
+
+  res.json({ ok: true, date: today, ...stats });
 });
 
 // ---------- author edits ----------
