@@ -531,17 +531,60 @@
       function formatStory(raw) {
         if (!raw) return '';
         const trimmed = raw.trim();
-        // First sentence terminator within a reasonable range. Avoid
-        // grabbing the whole story if there are no periods (bold a chunk
-        // at most 180 chars long). Avoid grabbing numbers / abbreviations
-        // by requiring a whitespace/end after the terminator.
-        const m = trimmed.match(/^([^\n]{10,180}?[.!?])(\s+|$)/);
-        if (!m) {
+
+        // Tokenize into sentences. Split on ". ", "! ", "? " followed by
+        // a capital or end-of-string, keeping the terminator with its sentence.
+        const sentenceRe = /([^.!?]*[.!?])(?:\s+(?=[A-Z"'])|$)/g;
+        const sentences = [];
+        let match;
+        let lastIdx = 0;
+        while ((match = sentenceRe.exec(trimmed)) !== null) {
+          const s = match[1].trim();
+          if (s.length >= 8) sentences.push({ text: s, start: match.index, end: match.index + match[0].length });
+          lastIdx = match.index + match[0].length;
+        }
+        // Remainder (no trailing terminator)
+        const tail = trimmed.slice(lastIdx).trim();
+        if (tail.length >= 8) sentences.push({ text: tail, start: lastIdx, end: trimmed.length });
+
+        // If we couldn't tokenize, bold the whole thing.
+        if (sentences.length === 0) {
           return `<strong class="story-lede">${escapeHtml(trimmed)}</strong>`;
         }
-        const lede = m[1];
-        const rest = trimmed.slice(lede.length);
-        return `<strong class="story-lede">${escapeHtml(lede)}</strong>${escapeHtml(rest)}`;
+        // Single sentence — bold it.
+        if (sentences.length === 1) {
+          return `<strong class="story-lede">${escapeHtml(sentences[0].text)}</strong>`;
+        }
+
+        // Score each non-first sentence for "importance":
+        // +3 for digits (concrete numbers), +2 for capital-letter words (proper nouns),
+        // +1 if length is in a good "meaty" range (30-150), -1 if very short.
+        function score(s) {
+          let n = 0;
+          if (/\d/.test(s)) n += 3;
+          const caps = (s.match(/\b[A-Z][a-z]{2,}/g) || []).length;
+          n += Math.min(caps, 3) * 2;
+          if (s.length >= 30 && s.length <= 150) n += 1;
+          if (s.length < 20) n -= 1;
+          return n;
+        }
+
+        const [first, ...rest] = sentences;
+        let bestIdx = 0;
+        let bestScore = -Infinity;
+        rest.forEach((s, i) => {
+          const sc = score(s.text);
+          if (sc > bestScore) { bestScore = sc; bestIdx = i; }
+        });
+        const second = rest[bestIdx];
+        const boldSet = new Set([first.start, second.start]);
+
+        // Re-assemble the story in original order, wrapping bolded sentences.
+        return sentences.map((s) =>
+          boldSet.has(s.start)
+            ? `<strong class="story-lede">${escapeHtml(s.text)}</strong>`
+            : escapeHtml(s.text)
+        ).join(' ');
       }
 
       // "Living database" timeline: approved updates are public, pending
@@ -817,6 +860,58 @@
           </div>
         </section>` : '';
 
+      // ---------- comments (flat, handle-required) ----------
+      // Anyone can comment but a twitter_handle is required. Author of the
+      // card (via delete_token) can delete any comment. Rendered below the
+      // Updates section so the article-style read flows: story → gallery →
+      // updates → community comments.
+      const commentsList = Array.isArray(item.comments) ? item.comments : [];
+      const commentItemsHtml = commentsList.length
+        ? commentsList.map((c) => {
+            const name = c.display_name || ('@' + c.twitter_handle);
+            const handleLink = `<a class="comment-handle" href="https://x.com/${escapeHtml(c.twitter_handle)}" target="_blank" rel="noopener">@${escapeHtml(c.twitter_handle)}</a>`;
+            const nameBlock = c.display_name
+              ? `<span class="comment-name">${escapeHtml(c.display_name)}</span> ${handleLink}`
+              : handleLink;
+            const removeBtn = isAuthor
+              ? `<button class="comment-delete" type="button" data-comment-id="${c.id}" title="Delete this comment">×</button>`
+              : '';
+            return `
+              <li class="comment-item" data-comment-id="${c.id}">
+                <div class="comment-head">
+                  <div class="comment-meta">
+                    ${nameBlock}
+                    <span class="comment-time muted">${escapeHtml(fmtDate(c.created_at))}</span>
+                  </div>
+                  ${removeBtn}
+                </div>
+                <p class="comment-body">${escapeHtml(c.body)}</p>
+              </li>`;
+          }).join('')
+        : `<li class="comment-empty muted">No comments yet — be the first to chime in.</li>`;
+
+      const commentsSectionHtml = `
+        <section class="detail-section comments-section">
+          <h2>Comments${commentsList.length ? ` <span class="tab-badge">${commentsList.length}</span>` : ''}</h2>
+          <form class="comment-form" onsubmit="return false;">
+            <div class="comment-form-row">
+              <input type="text" class="comment-handle-input" maxlength="40"
+                     placeholder="your X handle (required, e.g. shaughnessy119)" />
+              <input type="text" class="comment-name-input" maxlength="60"
+                     placeholder="display name (optional)" />
+            </div>
+            <textarea class="comment-body-input" rows="3" maxlength="${600}"
+                      placeholder="What do you think? Ask a question, share a tip, tell them you love it."></textarea>
+            <div class="comment-form-foot">
+              <span class="comment-status muted"></span>
+              <button class="comment-submit primary" type="button">Post comment</button>
+            </div>
+          </form>
+          <ul class="comments-list">
+            ${commentItemsHtml}
+          </ul>
+        </section>`;
+
       // ---------- build the main overview panel ----------
       // No more tabs — story + gotchas + gallery + updates all live in one
       // long scrollable column so the detail page reads like an article,
@@ -843,6 +938,8 @@
             <h2>Updates${updateCount ? ` <span class="tab-badge">${updateCount}</span>` : ''}</h2>
             ${renderUpdatesPanel(item)}
           </section>
+
+          ${commentsSectionHtml}
         </div>`;
 
       root.innerHTML = `
@@ -1068,6 +1165,63 @@
         btn.addEventListener('click', () => {
           if (!window.confirm('Reject this update? It will be deleted permanently.')) return;
           actOnUpdate(Number(btn.dataset.updateId), 'reject', btn);
+        });
+      });
+
+      // ---------- comments: post + delete ----------
+      const commentSubmit = root.querySelector('.comment-submit');
+      if (commentSubmit) {
+        commentSubmit.addEventListener('click', async () => {
+          const handleInput = root.querySelector('.comment-handle-input');
+          const nameInput = root.querySelector('.comment-name-input');
+          const bodyInput = root.querySelector('.comment-body-input');
+          const statusEl = root.querySelector('.comment-status');
+          const handle = (handleInput?.value || '').trim().replace(/^@/, '');
+          const displayName = (nameInput?.value || '').trim();
+          const body = (bodyInput?.value || '').trim();
+          if (!handle) { if (statusEl) statusEl.textContent = 'X handle is required.'; return; }
+          if (!body) { if (statusEl) statusEl.textContent = 'write something first.'; return; }
+          commentSubmit.disabled = true;
+          if (statusEl) statusEl.textContent = 'posting…';
+          try {
+            const res = await fetch(`/api/submissions/${id}/comments`, {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ twitter_handle: handle, display_name: displayName || undefined, body }),
+            });
+            if (!res.ok) {
+              const { error } = await res.json().catch(() => ({}));
+              throw new Error(error || 'post failed');
+            }
+            if (bodyInput) bodyInput.value = '';
+            if (statusEl) statusEl.textContent = '';
+            setTimeout(() => location.reload(), 200);
+          } catch (err) {
+            if (statusEl) statusEl.textContent = err.message || 'could not post';
+            commentSubmit.disabled = false;
+          }
+        });
+      }
+
+      root.querySelectorAll('.comment-delete').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const cid = btn.dataset.commentId;
+          if (!cid) return;
+          btn.disabled = true;
+          try {
+            const res = await fetch(`/api/submissions/${id}/comments/${cid}?token=${encodeURIComponent(deleteToken || '')}`, {
+              method: 'DELETE',
+            });
+            if (!res.ok) {
+              const { error } = await res.json().catch(() => ({}));
+              throw new Error(error || 'delete failed');
+            }
+            const li = btn.closest('.comment-item');
+            if (li) li.remove();
+          } catch (err) {
+            btn.disabled = false;
+            alert(err.message || 'could not delete comment');
+          }
         });
       });
     }

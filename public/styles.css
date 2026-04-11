@@ -435,27 +435,42 @@ a { color: inherit; text-decoration: none; }
   min-height: 22px;
 }
 
-/* ---------- feed (uniform grid) ----------
-   auto-fill + a fixed 360px track width keeps cards at a consistent
-   readable size regardless of how many have posted. Without this, one
-   or two cards would stretch to fill the full row, blowing the hero
-   image up to 1200×675 and making the whole page look wrong. */
+/* ---------- feed (3-column grid) ----------
+   Strict column counts, not auto-fill. With auto-fill + 1 card, the
+   card stretched to the full row and the image blew up to absurd
+   dimensions. Explicit breakpoints give predictable layout at every
+   viewport and always fit 3 cards across on desktop. */
 .feed {
-  max-width: var(--maxw);
+  max-width: 1260px;
   margin: 0 auto;
   padding: 8px 24px 64px;
   display: grid;
-  grid-template-columns: repeat(auto-fill, 360px);
-  justify-content: center;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 22px;
   align-items: start;
 }
-@media (max-width: 440px) {
-  .feed {
-    grid-template-columns: 1fr;
-    justify-content: stretch;
-  }
+@media (max-width: 1060px) {
+  .feed { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+@media (max-width: 640px) {
+  .feed { grid-template-columns: 1fr; }
+}
+
+/* Force card children to always stack vertically inside the card,
+   regardless of anything else going on. Belt-and-suspenders against
+   the horizontal-layout glitch we keep seeing. */
+.feed .card {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+}
+.feed .card > .card-media,
+.feed .card > .card-body {
+  width: 100%;
+  flex: 0 0 auto;
+}
+.feed .card > .card-body { flex: 1 1 auto; }
 
 .loading, .empty {
   color: var(--text-dim);
@@ -1776,3 +1791,131 @@ pre code { background: transparent; padding: 0; }
   cursor: pointer;
 }
 .donation .copy-btn:hover { color: var(--accent); border-color: var(--accent); }
+
+/* ============================================================
+   Comments section
+   ============================================================ */
+.comments-section .comments-list {
+  list-style: none;
+  margin: 24px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.comment-item {
+  padding: 16px 0;
+  border-bottom: 1px solid var(--border);
+}
+.comment-item:last-child { border-bottom: none; }
+.comment-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.comment-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.comment-handle {
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--accent);
+  text-decoration: none;
+}
+.comment-handle:hover { text-decoration: underline; }
+.comment-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+.comment-time {
+  font-size: 11px;
+}
+.comment-body {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.comment-empty {
+  font-size: 13px;
+  padding: 16px 0;
+}
+.comment-delete {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 6px;
+  flex-shrink: 0;
+  transition: color 0.15s, background 0.15s;
+}
+.comment-delete:hover { color: var(--heart, #ff4d6d); background: rgba(255, 77, 109, 0.1); }
+
+/* Comment form */
+.comment-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  border-radius: 10px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+}
+.comment-form-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.comment-form-row input {
+  flex: 1 1 160px;
+  min-width: 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+}
+.comment-form-row input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.comment-body-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.5;
+  resize: vertical;
+  font-family: inherit;
+}
+.comment-body-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.comment-form-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.comment-status {
+  font-size: 12px;
+}

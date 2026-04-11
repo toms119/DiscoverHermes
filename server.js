@@ -233,6 +233,27 @@ db.exec(`
     ON submission_updates(submission_id, status, created_at DESC);
 `);
 
+// ---------- visitor comments ----------
+// Flat (non-threaded) comments on each card. Anyone can comment but a
+// twitter_handle is required — same civil-resistance rule as submissions.
+// Author of the card can delete any comment on their card via their
+// delete_token. Admin can delete anything via ADMIN_TOKEN. No edits.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS submission_comments (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    submission_id  INTEGER NOT NULL,
+    body           TEXT NOT NULL,
+    twitter_handle TEXT NOT NULL,
+    display_name   TEXT,
+    created_at     TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (submission_id) REFERENCES submissions(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_comments_sub_created
+    ON submission_comments(submission_id, created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_comments_handle
+    ON submission_comments(LOWER(twitter_handle));
+`);
+
 // ---------- helpers ----------
 
 function clean(str, max) {
@@ -411,7 +432,7 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'"],
+      scriptSrc: ["'self'", "https://cdn.jsdelivr.net"],
       styleSrc: ["'self'"],
       imgSrc: ["'self'", "data:", "https:", "blob:"],
       connectSrc: ["'self'"],
@@ -1092,6 +1113,15 @@ app.get('/api/submissions/:id', (req, res) => {
      ORDER BY approved_at DESC, created_at DESC`
   ).all(id);
 
+  // Flat visitor comments, newest first.
+  hydrated.comments = db.prepare(
+    `SELECT id, body, twitter_handle, display_name, created_at
+     FROM submission_comments
+     WHERE submission_id = ?
+     ORDER BY created_at DESC
+     LIMIT 200`
+  ).all(id);
+
   const token = typeof req.query.token === 'string' ? req.query.token : null;
   if (token && verifyDeleteToken(id, token)) {
     hydrated.pending_updates = db.prepare(
@@ -1231,6 +1261,91 @@ app.post('/api/submissions/:id/updates/:updateId/action', smallJson, (req, res) 
   // Hard delete on reject — no audit trail, per user design decision.
   db.prepare('DELETE FROM submission_updates WHERE id = ?').run(updateId);
   res.json({ ok: true, id: updateId, status: 'rejected' });
+});
+
+// ---------- visitor comments ----------
+// Flat comments on a card. Anyone can comment but a twitter_handle is
+// required. Rate-limited per IP. Same scanForSecrets safety as other
+// free-text paths. Author of the card or admin can delete.
+const COMMENT_MAX_LEN = 600;
+const commentLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  limit: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'slow down — 10 comments per 5 minutes' },
+});
+
+app.post('/api/submissions/:id/comments', smallJson, commentLimiter, (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return res.status(400).json({ error: 'invalid id' });
+
+  const exists = db.prepare('SELECT 1 FROM submissions WHERE id = ? AND approved = 1').get(id);
+  if (!exists) return res.status(404).json({ error: 'not found' });
+
+  const b = req.body || {};
+  const body = clean(b.body, COMMENT_MAX_LEN);
+  if (!body) return res.status(400).json({ error: 'comment body is required' });
+
+  const normalizedHandle = normalizeHandle(b.twitter_handle);
+  if (!normalizedHandle) {
+    return res.status(400).json({
+      error:
+        'twitter_handle is required — every DiscoverHermes comment is tied to a real X handle. Paste yours and try again.',
+    });
+  }
+
+  const displayName = clean(b.display_name, 60) || null;
+
+  const secret = scanForSecrets([body, displayName]);
+  if (secret) {
+    return res.status(400).json({ error: `looks like a ${secret}; redact and retry` });
+  }
+
+  const info = db.prepare(
+    `INSERT INTO submission_comments (submission_id, body, twitter_handle, display_name)
+     VALUES (?, ?, ?, ?)`
+  ).run(id, body, normalizedHandle, displayName);
+
+  const inserted = db.prepare(
+    `SELECT id, body, twitter_handle, display_name, created_at
+     FROM submission_comments WHERE id = ?`
+  ).get(info.lastInsertRowid);
+
+  res.status(201).json(inserted);
+});
+
+// Delete a comment. Two paths:
+//   1. Author of the card (proves via ?token=<delete_token>)
+//   2. Admin (proves via x-admin-token header)
+// No self-delete by comment author — we don't store their delete token.
+app.delete('/api/submissions/:id/comments/:commentId', (req, res) => {
+  const id = Number(req.params.id);
+  const commentId = Number(req.params.commentId);
+  if (!Number.isInteger(id) || !Number.isInteger(commentId)) {
+    return res.status(400).json({ error: 'invalid id' });
+  }
+
+  const row = db.prepare(
+    `SELECT id FROM submission_comments WHERE id = ? AND submission_id = ?`
+  ).get(commentId, id);
+  if (!row) return res.status(404).json({ error: 'comment not found' });
+
+  const token =
+    (req.body && req.body.token) || req.query.token || req.get('x-delete-token');
+  const adminToken = req.get('x-admin-token');
+
+  const isAuthor = typeof token === 'string' && verifyDeleteToken(id, token);
+  const isAdmin = ADMIN_TOKEN && adminToken === ADMIN_TOKEN;
+
+  if (!isAuthor && !isAdmin) {
+    return res.status(403).json({
+      error: 'only the card author (with delete token) or admin can delete a comment',
+    });
+  }
+
+  db.prepare(`DELETE FROM submission_comments WHERE id = ?`).run(commentId);
+  res.json({ ok: true });
 });
 
 // ---------- likes ----------
