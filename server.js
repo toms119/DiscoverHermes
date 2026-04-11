@@ -9,6 +9,7 @@ const fs = require('fs');
 const crypto = require('crypto');
 const express = require('express');
 const rateLimit = require('express-rate-limit');
+const helmet = require('helmet');
 const Database = require('better-sqlite3');
 const sharp = require('sharp');
 
@@ -399,6 +400,25 @@ function requireAdmin(req, res, next) {
 // ---------- app setup ----------
 const app = express();
 app.set('trust proxy', 1);
+
+// Security headers for production
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'"],
+      styleSrc: ["'self'"],
+      imgSrc: ["'self'", "data:", "https:", "blob:"],
+      connectSrc: ["'self'"],
+      fontSrc: ["'self'"],
+      objectSrc: ["'none'"],
+      frameAncestors: ["'none'"],
+    },
+  },
+  crossOriginEmbedderPolicy: false,
+  crossOriginOpenerPolicy: false,
+  crossOriginResourcePolicy: false,
+}));
 
 const bigJson = express.json({ limit: '8mb' });
 const smallJson = express.json({ limit: '64kb' });
@@ -1528,6 +1548,26 @@ app.get('/submit', serveHtml('submit.html'));
 app.get('/stats', serveHtml('stats.html'));
 app.get('/rankings', serveHtml('rankings.html'));
 app.get('/use-cases/:id', serveHtml('use-case.html'));
+
+// Graceful shutdown for Railway / container environments
+// Ensures SQLite WAL is checkpointed before exit
+let isShuttingDown = false;
+async function gracefulShutdown(signal) {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+  console.log(`Received ${signal}, shutting down gracefully...`);
+  try {
+    db.pragma('wal_checkpoint(TRUNCATE)');
+    db.close();
+    console.log('Database closed cleanly.');
+  } catch (e) {
+    console.error('Error during shutdown:', e.message);
+  }
+  process.exit(0);
+}
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 app.listen(PORT, () => {
   console.log(`DiscoverHermes listening on http://localhost:${PORT}`);
