@@ -273,6 +273,47 @@ function cleanBool(val) {
   return null;
 }
 
+// Build a 280-character-safe share tweet. Twitter counts any URL inside the
+// text as 23 characters via t.co, regardless of the actual URL length, so we
+// budget against that constant. Always ship prefix + title + card URL; fit
+// the pitch in between only if there's room for at least a meaningful chunk.
+function buildShareTweet(title, pitch, cardUrl) {
+  const MAX = 280;
+  const URL_LEN = 23;               // t.co shortener, fixed
+  const PREFIX = 'I shared my agent on @DiscoverHermes:';
+  const SEP = '\n\n';
+
+  const titleText = (title || '').trim();
+  const pitchText = (pitch || '').trim();
+
+  // Required overhead: PREFIX + SEP + <title> + SEP + <url>
+  const baseOverhead = PREFIX.length + SEP.length + SEP.length + URL_LEN;
+  const titleMax = MAX - baseOverhead;
+
+  let titleSafe = titleText;
+  if (titleSafe.length > titleMax) {
+    titleSafe = titleSafe.slice(0, Math.max(0, titleMax - 1)).trimEnd() + '…';
+  }
+
+  // Try to fit the pitch between the title and the URL.
+  let pitchBlock = '';
+  if (pitchText) {
+    const usedSoFar = baseOverhead + titleSafe.length;
+    const remaining = MAX - usedSoFar; // what's left after title + fixed stuff
+    // Need at least SEP + ~40 chars to bother showing a pitch line.
+    if (remaining >= SEP.length + 40) {
+      const pitchBudget = remaining - SEP.length;
+      let p = pitchText;
+      if (p.length > pitchBudget) {
+        p = p.slice(0, Math.max(0, pitchBudget - 1)).trimEnd() + '…';
+      }
+      pitchBlock = SEP + p;
+    }
+  }
+
+  return `${PREFIX}${SEP}${titleSafe}${pitchBlock}${SEP}${cardUrl}`;
+}
+
 // Verify a plaintext delete token against the stored SHA-256 hash for a
 // submission. Used by DELETE /api/submissions/:id and by the living-database
 // update endpoints (approve/reject/post). Returns true only on match.
@@ -656,12 +697,11 @@ app.post('/api/submissions', smallJson, submitLimiter, (req, res) => {
   hydrated.delete_token = deleteToken;
   hydrated.delete_url = `/use-cases/${inserted.id}?delete=${deleteToken}`;
 
-  // Pre-built "share on X" link. The submitting agent can surface this to
-  // the user right after they post so they have a one-click way to tweet
-  // their agent card. Title is unique per submission, so each tweet is fresh.
+  // Pre-built "share on X" link. Budget is a hard 280 characters, and Twitter
+  // counts any URL in the text as 23 chars via t.co. Always include the prefix,
+  // the title, and the card URL; fit the pitch in between only if there's room.
   const cardUrl = `${PUBLIC_URL}/use-cases/${inserted.id}`;
-  const tweetText = `${title}\n\n${pitch}\n\nBuilt with Hermes 👇`;
-  hydrated.share_tweet_url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(tweetText)}&url=${encodeURIComponent(cardUrl)}`;
+  hydrated.share_tweet_url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(buildShareTweet(title, pitch, cardUrl))}`;
 
   res.status(201).json(hydrated);
 });
