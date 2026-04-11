@@ -504,31 +504,6 @@ a { color: inherit; text-decoration: none; }
   .feed { grid-template-columns: 1fr; }
 }
 
-/* ----------------------------------------------------------------
-   Belt-and-suspenders: cards MUST always stack image-on-top of text,
-   never side-by-side. Use !important so nothing in the cascade
-   (browser defaults, inherited flex rows, etc.) can override these.
-   ---------------------------------------------------------------- */
-.card,
-.feed .card {
-  display: flex !important;
-  flex-direction: column !important;
-  width: 100%;
-  min-width: 0;
-}
-.card-media {
-  display: block !important;
-  width: 100% !important;
-  flex-shrink: 0;
-}
-.card-body {
-  display: flex !important;
-  flex-direction: column !important;
-  flex: 1 1 auto;
-  width: 100%;
-  min-width: 0;
-}
-
 .loading, .empty {
   color: var(--text-dim);
   padding: 40px 0;
@@ -536,10 +511,15 @@ a { color: inherit; text-decoration: none; }
   grid-column: 1 / -1;
 }
 
+/* ----------------------------------------------------------------
+   CARD — single source of truth.
+   Use display:block on the outer <a> so .card-media and .card-body
+   stack top-to-bottom automatically (block elements always do).
+   No flexbox on the outer card = no flex-direction confusion ever.
+   ---------------------------------------------------------------- */
 .card {
+  display: block;         /* <a> is inline by default; force block */
   position: relative;
-  display: flex;
-  flex-direction: column;
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -551,8 +531,15 @@ a { color: inherit; text-decoration: none; }
     border-color 0.2s ease,
     box-shadow 0.2s ease;
 }
+.card:hover {
+  transform: translateY(-3px);
+  border-color: var(--border-strong);
+  box-shadow: 0 12px 32px -12px rgba(0, 0, 0, 0.6);
+}
+.card:hover::before {
+  background: linear-gradient(135deg, rgba(124, 92, 255, 0.5), rgba(124, 92, 255, 0));
+}
 .card::before {
-  /* Subtle gradient accent on the top edge — only visible on hover */
   content: '';
   position: absolute;
   inset: 0;
@@ -567,15 +554,8 @@ a { color: inherit; text-decoration: none; }
   pointer-events: none;
   transition: background 0.3s ease;
 }
-.card:hover {
-  transform: translateY(-3px);
-  border-color: var(--border-strong);
-  box-shadow: 0 12px 32px -12px rgba(0, 0, 0, 0.6);
-}
-.card:hover::before {
-  background: linear-gradient(135deg, rgba(124, 92, 255, 0.5), rgba(124, 92, 255, 0));
-}
 
+/* Image zone — always full-width block, always on top */
 .card-media {
   display: block;
   width: 100%;
@@ -603,9 +583,11 @@ a { color: inherit; text-decoration: none; }
   background: linear-gradient(135deg, #1a1f2b, #10131a);
 }
 
+/* Text zone — below image, flex-column for internal layout */
 .card-body {
-  padding: 16px 18px 16px;
-  gap: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 16px 18px;
 }
 .card-title {
   font-size: 17px;
