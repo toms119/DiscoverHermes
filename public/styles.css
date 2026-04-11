@@ -914,3 +914,36 @@ pre code { background: transparent; padding: 0; }
   gap: 10px;
 }
 .site-footer a:hover { color: var(--accent); }
+.donation {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1 1 auto;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.donation-label { color: var(--text-dim); white-space: nowrap; }
+.donation code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 8px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.donation .copy-btn {
+  font-size: 11px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-dim);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.donation .copy-btn:hover { color: var(--accent); border-color: var(--accent); }

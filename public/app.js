@@ -70,10 +70,14 @@
   // ---------- copy-to-clipboard (all pages) ----------
   document.querySelectorAll('.copy-btn').forEach((btn) => {
     btn.addEventListener('click', async () => {
-      const target = document.getElementById(btn.dataset.copyTarget);
-      if (!target) return;
+      let text = btn.dataset.copyText;
+      if (!text && btn.dataset.copyTarget) {
+        const target = document.getElementById(btn.dataset.copyTarget);
+        if (target) text = target.innerText;
+      }
+      if (!text) return;
       try {
-        await navigator.clipboard.writeText(target.innerText);
+        await navigator.clipboard.writeText(text);
         const original = btn.textContent;
         btn.textContent = 'Copied!';
         setTimeout(() => (btn.textContent = original), 1500);
