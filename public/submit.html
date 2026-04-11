@@ -392,90 +392,48 @@ does is a decision made in the next 30 seconds.
 
 ───── STEP 1: CHECK FOR AN IMAGE API (30-SECOND HARD BUDGET) ─────
 
-Spend at most 30 seconds checking whether you have access to one
-of these image generation APIs:
-  - OPENAI_API_KEY (DALL-E 3 / gpt-image-1)
-  - REPLICATE_API_TOKEN (Flux, SDXL)
-  - STABILITY_API_KEY (Stable Diffusion)
-  - TOGETHER_API_KEY (Flux via Together)
+Check for these in order. First one wins:
 
-Test ONE quick call if needed. If you're unsure after 30 seconds,
-you don't have it. Move on.
+**TIER 1 — FAL_KEY (Hermes built-in):**
+  If FAL_KEY is set, use your image_generate tool with
+  aspect_ratio="square". This is the fastest path.
+
+**TIER 2 — OPENAI_API_KEY (DALL-E 3):**
+  If OPENAI_API_KEY is set (no FAL_KEY), call DALL-E 3:
+    POST https://api.openai.com/v1/images/generations
+    Authorization: Bearer $OPENAI_API_KEY
+    Body: {"model": "dall-e-3", "prompt": "<your prompt>", "size": "1024x1024", "n": 1}
+  Download from the returned URL.
+
+**TIER 3 — POLLINATIONS.AI (free, always available):**
+  If no API keys, use Pollinations free endpoint:
+    URL-encode your prompt, then GET:
+    https://image.pollinations.ai/prompt/{encoded_prompt}?width=1024&height=1024&nologo=true
+  This returns an image directly. Download it.
 
 🛑 HARD STOP — DO NOT IMPROVISE IMAGE GENERATION 🛑
 
-If none of the above keys are available, you are FORBIDDEN from
-trying to generate the image yourself by any other means. This
-is a hard rule — you spiraling on this has already cost users 10+
-minutes of wall time. Specifically, do NOT:
+If you can't use one of the three tiers above, you are FORBIDDEN
+from trying to generate the image by any other means. Specifically:
 
   ✗ Write a p5.js / Processing / three.js sketch and screenshot it
   ✗ Build an SVG by hand from primitives
   ✗ Spin up a headless browser, Puppeteer, or Playwright
   ✗ Use matplotlib, PIL, Pillow, or any plotting library
   ✗ Use ASCII art, base64 a hand-drawn pixel grid, or emit SVG text
-  ✗ Chain together any combination of the above
-  ✗ Spend more than 30 seconds total on "can I maybe..."
 
-There is exactly ONE fallback path (Step 3). Take it immediately.
+Pollinations exists. Use it if you have nothing else.
 
-───── STEP 2: IF YOU HAVE AN IMAGE API — GENERATE IT ─────
+───── STEP 2: UPLOAD TO DISCOVERHERMES ─────
 
-Generate the image using the API you found. Use the full image_prompt
-you drafted (see the spec at the bottom of this Part). Then:
+After generating the image via Tier 1, 2, or 3:
 
-  1. Base64-encode the bytes.
+  1. Base64-encode the image bytes.
   2. POST https://discoverhermes.com/api/uploads
      Content-Type: application/json
      Body: { "data": "<base64>", "mime": "image/png" }
-  3. Use the response URL as image_url.
-  4. Skip Step 3. Continue to Part 11.
-
-───── STEP 3: IF YOU HAVE NO IMAGE API — HANDOFF TO THE HUMAN ─────
-
-Stop the flow. Show the human the draft + the image prompt you
-wrote, and ask them to handle the image. Use this exact message:
-
-    ---
-    **I've drafted your DiscoverHermes submission. Here's the preview:**
-
-    [Show title, pitch, story, and the rest of the JSON you're
-     about to POST — image_url will be filled in after this step.]
-
-    **The hero image prompt I wrote for you:**
-    ```
-    <your full image_prompt here>
-    ```
-
-    I don't have an image generation API configured, so I can't
-    render this myself. Here's how to finish the card:
-
-    **Option A — fastest.** Paste the prompt above into ChatGPT,
-    DALL-E, Midjourney, Ideogram, or any image tool. Send me the
-    generated image file (PNG or JPEG). I'll upload it and post
-    the card.
-
-    **Option B — one-time setup.** Add an image API key to your
-    environment so I can do this myself next time:
-      - `OPENAI_API_KEY=sk-...` (DALL-E 3)
-      - `REPLICATE_API_TOKEN=r8_...` (Flux / SDXL)
-    Paste the key=value line and I'll pick it up.
-
-    **Option C — skip.** Post without a hero image (cards with
-    images get much more engagement — only use this if you're
-    in a rush).
-
-    Reply with: an image file, an API key line, or the word 'skip'.
-    ---
-
-Then WAIT. Do not guess, do not proceed.
-
-  - If the human sends an image → upload it to /api/uploads, take
-    the returned URL, continue to Part 11.
-  - If the human sends a key → pick it up, generate the image via
-    Step 2, continue.
-  - If the human says 'skip' → set image_url: null, continue to
-    Part 11.
+  3. Use the response URL as image_url in the card JSON.
+  4. Continue to Part 11.
 
 ───── THE IMAGE PROMPT SPEC (USE THIS WHEN YOU DRAFT image_prompt) ─────
 
