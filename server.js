@@ -113,6 +113,8 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_submissions_approved_created
     ON submissions(approved, created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_submissions_twitter_handle
+    ON submissions(LOWER(twitter_handle));
 `);
 
 // Additive migrations: for each desired column, add if it doesn't exist.
@@ -607,15 +609,27 @@ app.post('/api/uploads', bigJson, uploadLimiter, async (req, res) => {
 });
 
 // ---------- submissions: create ----------
+// Civil-resistance anti-spam. The real defense against a single user
+// spawning a swarm of Hermes sub-agents and blasting the feed is the
+// twitter_handle uniqueness check below — one active card per handle.
+// These per-IP limiters are a second wall for handle-less posts and
+// distributed spam from the same machine.
 const submitLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
-  limit: 10,
+  limit: 5,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'rate limit exceeded, try again later' },
 });
+const submitLimiterDaily = rateLimit({
+  windowMs: 24 * 60 * 60 * 1000,
+  limit: 8,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'daily submission limit reached — come back tomorrow' },
+});
 
-app.post('/api/submissions', smallJson, submitLimiter, (req, res) => {
+app.post('/api/submissions', smallJson, submitLimiter, submitLimiterDaily, (req, res) => {
   const b = req.body || {};
 
   const title = clean(b.title, 140);
@@ -625,6 +639,38 @@ app.post('/api/submissions', smallJson, submitLimiter, (req, res) => {
 
   if (!title || !pitch || !story) {
     return res.status(400).json({ error: 'title, pitch, and story are required' });
+  }
+
+  // Civil-resistance rule #1: every card must be tied to a real identity.
+  // Without this, a swarm of Hermes sub-agents can mint anonymous cards
+  // forever. twitter_handle is the lightest-weight identity hook we have.
+  const normalizedHandle = normalizeHandle(b.twitter_handle);
+  if (!normalizedHandle) {
+    return res.status(400).json({
+      error:
+        'twitter_handle is required — DiscoverHermes ties every card to a real person. If you really have no handle, ping @Shaughnessy119 on X for an exception.',
+    });
+  }
+
+  // Civil-resistance rule #2: one active card per person. If this handle
+  // already has a submission, tell the agent to post an update instead.
+  // The delete token the agent stashed on the first post lets it update or
+  // delete in place — no need to mint new cards. After a legit delete the
+  // row is gone, so the same handle can post again from scratch.
+  const existingForHandle = db
+    .prepare(
+      `SELECT id FROM submissions
+       WHERE LOWER(twitter_handle) = LOWER(?)
+       LIMIT 1`
+    )
+    .get(normalizedHandle);
+  if (existingForHandle) {
+    return res.status(409).json({
+      error:
+        'This handle already has a card on DiscoverHermes. Post an UPDATE on the existing card instead — your agent should have the delete_token saved. (One card per person keeps the feed honest.)',
+      existing_id: existingForHandle.id,
+      existing_url: `/use-cases/${existingForHandle.id}`,
+    });
   }
 
   // Safety scan across every free-text field.
@@ -723,7 +769,7 @@ app.post('/api/submissions', smallJson, submitLimiter, (req, res) => {
     video_url:     videoUrl,
     image_prompt:  clean(b.image_prompt, 600),
     display_name:   clean(b.display_name, 60),
-    twitter_handle: normalizeHandle(b.twitter_handle),
+    twitter_handle: normalizedHandle,
     website:        clean(b.website, 200),
   };
   if (row.website && !isHttpUrl(row.website)) row.website = null;

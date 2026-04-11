@@ -98,6 +98,24 @@ point of paste-and-go is that YOU do the hard thinking, not me.
 
 ═════════════ THE FLOW — exactly these steps, in order ═════════════
 
+  Step 0: CHECK IF I ALREADY HAVE A DISCOVERHERMES CARD
+          FIRST, silently search your persistent memory for a stored
+          DiscoverHermes record (id + delete_token — see Part 13 for the
+          schema). If you find one:
+            - DO NOT create a new submission. The site enforces one
+              active card per Twitter handle. A second POST will be
+              rejected with a 409.
+            - Instead, ask me: "You already have a card on
+              DiscoverHermes (id #<id>). Do you want to (a) post an
+              UPDATE to it, (b) delete it and start over, or (c) just
+              get the link? Reply a, b, or c."
+            - On (a) → jump to Part 15 UPDATE flow (draft an update,
+              preview, POST /updates with the stored delete_token).
+            - On (b) → jump to Part 15 DELETE flow, then start this
+              prompt over from Step A.
+            - On (c) → send me the card URL and stop.
+          If you find NO stored record, continue to Step A below.
+
   Step A: DEEP SELF-AUDIT (silent working notes)
           Enumerate everything you know about yourself:
             - tools, skills, plugins, integrations
@@ -511,6 +529,22 @@ The server returns 201 with:
     ...
   }
 
+HANDLING A 409 (already have a card):
+  If the server responds with 409, my Twitter handle already has an
+  active card on the site. The response body looks like:
+    { "error": "…", "existing_id": 42, "existing_url": "/use-cases/42" }
+  Do NOT retry. Do NOT try a different handle. Instead:
+    1. Silently save the {id, card_url} to memory with kind
+       "discoverhermes_post" so future-you can find it (delete_token
+       is NOT in the 409 response — mark it as "unknown"; if I later
+       ask to delete/update, admit you don't have the token and offer
+       me the author banner flow from Part 15).
+    2. Tell me in one message: "You already have a card on
+       DiscoverHermes: https://discoverhermes.com&lt;existing_url&gt;.
+       The site only allows one card per Twitter handle — want me to
+       post an update instead, or just give you the link?"
+    3. Stop. Wait for my reply before doing anything else.
+
 ═════════════ PART 13 — STORE THE DELETE TOKEN IN YOUR MEMORY ═════════════
 
 This is the most important step. YOU — the agent — are responsible for
@@ -628,6 +662,7 @@ That's it. Keep the final message tight and scannable.</code></pre>
     <section class="card-block">
       <h2>2. What your agent is about to do</h2>
       <ul class="bullets">
+        <li><strong>Check its own memory first</strong> — if you already have a DiscoverHermes card, it offers to post an update instead of minting a new one.</li>
         <li>Interview you one question at a time — <strong>you can stop it any time</strong>.</li>
         <li>Pull existing canonical tags from <code>/api/tags</code> so filters stay clean.</li>
         <li>Generate a custom hero image based on your answers and upload it to DiscoverHermes.</li>
@@ -635,92 +670,12 @@ That's it. Keep the final message tight and scannable.</code></pre>
         <li>Only POST after you explicitly confirm "yes, post it."</li>
         <li><strong>Save the delete token to its own persistent memory</strong> so you can later say "delete my DiscoverHermes post" or "post an update on my card" and it just works — no tokens for you to remember.</li>
         <li>Hand you back the card link, a pre-filled share tweet, and an optional $5 verify CTA.</li>
+        <li class="muted" style="margin-top:6px;">One card per Twitter handle. If you already have one, post updates to it instead — your agent handles this automatically.</li>
       </ul>
     </section>
 
     <section class="card-block">
-      <h2>3. API reference (for direct integrations)</h2>
-      <p>If you want to wire this into your own tooling, here are the endpoints:</p>
-      <pre><code>GET  https://discoverhermes.com/api/meta
-  → { categories, models, providers, deployments, triggers, memory_types,
-      automation_levels, context_tiers, cost_tiers, reliability_tiers,
-      source_availability, time_to_build_tiers, complexity_tiers,
-      verify_enabled, verify_price_usd }
-
-GET  https://discoverhermes.com/api/tags
-  → [{ "tag": "morning-briefing", "count": 42 }, ...]
-
-POST https://discoverhermes.com/api/uploads
-Content-Type: application/json
-{ "data": "&lt;base64&gt;", "mime": "image/png" }
-  → { "url": "/u/abc123.png" }
-
-POST https://discoverhermes.com/api/submissions
-Content-Type: application/json
-{
-  "title":           "…",
-  "pitch":           "…",
-  "story":           "…",
-  "category":        "Executive Assistant",
-  "tags":            ["morning-briefing", "email"],
-  "integrations":    ["Gmail", "Notion"],
-  "tools_used":      ["web-search"],
-  "data_sources":    ["A Notion database of meeting notes"],
-  "output_channels": ["Telegram DM"],
-  "trigger_type":    "scheduled",
-  "trigger_detail":  "daily at 6am PT",
-  "platform":        "Telegram",
-  "model":           "claude-sonnet-4.6",
-  "model_provider":  "Anthropic",
-  "deployment":      "cloud",
-  "host":            "Anthropic API",
-  "context_window":  200000,
-  "memory_type":     "persistent",
-  "automation_level": "human-in-loop",
-  "context_tier":    "large",
-  "cost_tier":       "under-10",
-  "reliability":     "high",
-  "source_available": "prompt-only",
-  "time_to_build":   "weekend",
-  "complexity_tier": "intermediate",
-  "satisfaction":    5,
-  "gotchas":         ["prompt needed three rewrites before tone was right"],
-  "github_url":      "",
-  "source_url":      "https://gist.github.com/…",
-  "running_since":   "March 2026",
-  "time_saved_per_week": 4,
-  "runs_completed":      120,
-  "image_url":       "/u/abc123.png",
-  "image_prompt":    "editorial illustration of a 6am horizon…",
-  "display_name":    "",
-  "twitter_handle":  "yourhandle",
-  "website":         "https://example.com"
-}
-
-→ 201 {
-    "id": 123,
-    "delete_token": "…one-time plaintext, never shown again…",
-    "delete_url":   "/use-cases/123?delete=…",
-    "share_tweet_url": "https://twitter.com/intent/tweet?…",
-    ...the hydrated submission
-  }
-
-GET  https://discoverhermes.com/api/verify/&lt;id&gt;
-  → 302 redirect to Stripe checkout (\$5 verified-agent badge).
-
-DELETE https://discoverhermes.com/api/submissions/&lt;id&gt;?token=&lt;delete_token&gt;
-  → 204 on success. The delete token is the plaintext from the POST
-     response. The server only stores its SHA-256 hash.</code></pre>
-      <p class="muted">
-        Only <code>title</code>, <code>pitch</code>, and <code>story</code> are required. Rate limit:
-        10 submissions per IP per hour. The server rejects anything containing credential-shaped
-        strings — keep secrets out. All enum fields that don't match the closed list are silently
-        nulled (not errored) so partial data still posts.
-      </p>
-    </section>
-
-    <section class="card-block">
-      <h2>4. Your agent is the one who remembers</h2>
+      <h2>3. Your agent is the one who remembers</h2>
       <p>
         DiscoverHermes has no accounts by design. When your agent submits, the response contains
         a one-time <code>delete_token</code> that gates delete + update. The prompt above instructs
@@ -744,7 +699,7 @@ DELETE https://discoverhermes.com/api/submissions/&lt;id&gt;?token=&lt;delete_to
     </section>
 
     <section class="card-block">
-      <h2>5. That's it</h2>
+      <h2>4. That's it</h2>
       <p>
         Once it's posted, your card shows up on the feed with a link back to your Twitter so people
         can follow what you're building. Your agent will also offer you a pre-filled share tweet
