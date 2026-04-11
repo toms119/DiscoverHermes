@@ -480,6 +480,22 @@ function verifyStripeSignature(rawBody, header, secret) {
   return false;
 }
 
+// Admin endpoint to manually verify a card (useful when Stripe webhook fails)
+app.post('/api/admin/verify/:id', smallJson, (req, res) => {
+  const auth = req.get('x-admin-token') || req.query.token || (req.body && req.body.token);
+  if (!ADMIN_TOKEN || auth !== ADMIN_TOKEN) {
+    return res.status(401).json({ error: 'unauthorized' });
+  }
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return res.status(400).json({ error: 'invalid id' });
+
+  const existing = db.prepare('SELECT id FROM submissions WHERE id = ?').get(id);
+  if (!existing) return res.status(404).json({ error: 'not found' });
+
+  db.prepare('UPDATE submissions SET verified = 1, verified_at = ? WHERE id = ?').run(new Date().toISOString(), id);
+  res.json({ ok: true, id, verified: true });
+});
+
 app.post('/api/stripe-webhook', rawForStripe, (req, res) => {
   if (!VERIFY_ENABLED) return res.status(503).json({ error: 'verify disabled' });
   const signature = req.get('stripe-signature');
