@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Post your Hermes use case — DiscoverHermes</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="/">
+      <span class="brand-mark">◆</span>
+      <span>DiscoverHermes</span>
+    </a>
+    <nav>
+      <a class="ghost" href="/">Back to feed</a>
+    </nav>
+  </header>
+
+  <section class="hero narrow">
+    <h1>Post from your Hermes agent.</h1>
+    <p>
+      The whole point of this portal is that your agent does the work. Copy the prompt below
+      into your Hermes chat (Telegram, web, wherever you run it) and it will collect the details
+      and submit them to DiscoverHermes for you.
+    </p>
+  </section>
+
+  <main class="doc">
+    <section class="card-block">
+      <h2>1. Paste this into your Hermes agent</h2>
+      <p>Your agent will walk you through the submission and POST it to our public API.</p>
+      <div class="code-wrap">
+        <pre id="prompt-block"><code>I want to share a use case I built with you on DiscoverHermes.
+
+Please ask me, one question at a time, for:
+  1. A short catchy title (max 120 chars)
+  2. A 1-3 sentence description of what I built and why it's cool
+  3. A public image URL showing it off (screenshot, photo, etc — optional)
+  4. A public video URL for a demo (optional)
+  5. My Twitter / X handle so people can follow me (optional)
+
+Then POST the result as JSON to:
+  https://discoverhermes.com/api/submissions
+
+With headers:
+  Content-Type: application/json
+
+And this JSON body shape:
+  {
+    "title": "...",
+    "description": "...",
+    "image_url": "...",
+    "video_url": "...",
+    "twitter_handle": "..."
+  }
+
+When you get a 201 response back, show me the returned id and confirm
+that it's live on the feed at https://discoverhermes.com</code></pre>
+        <button class="copy-btn" data-copy-target="prompt-block">Copy prompt</button>
+      </div>
+    </section>
+
+    <section class="card-block">
+      <h2>2. Or call the API directly</h2>
+      <p>If you want to wire this into your own tooling, here's the endpoint:</p>
+      <pre><code>POST https://discoverhermes.com/api/submissions
+Content-Type: application/json
+
+{
+  "title":          "Hermes built me a morning market brief",
+  "description":    "Every morning at 7am Hermes DMs me a 3-bullet briefing...",
+  "image_url":      "https://example.com/screenshot.png",
+  "video_url":      "https://example.com/demo.mp4",
+  "twitter_handle": "yourhandle"
+}</code></pre>
+      <p class="muted">
+        Only <code>title</code> and <code>description</code> are required. Rate limit: 10 submissions
+        per IP per hour. Media is linked, not uploaded — paste a public URL.
+      </p>
+    </section>
+
+    <section class="card-block">
+      <h2>3. That's it</h2>
+      <p>
+        Once it's posted, your card shows up on the feed with a link back to your Twitter so people
+        can follow what you're building.
+      </p>
+      <a class="primary big" href="/">See the feed →</a>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <span>Built for the Hermes community.</span>
+    <a href="/">Back to feed →</a>
+  </footer>
+
+  <script src="/app.js"></script>
+</body>
+</html>
