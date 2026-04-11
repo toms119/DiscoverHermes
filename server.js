@@ -269,6 +269,37 @@ db.exec(`
     ON submission_comments(LOWER(twitter_handle));
 `);
 
+// Migration: make submission_comments.twitter_handle nullable
+// (original schema had NOT NULL; we now allow display-name-only comments)
+(function migrateCommentsSchema() {
+  const colInfo = db.pragma('table_info(submission_comments)');
+  const handleCol = colInfo.find((c) => c.name === 'twitter_handle');
+  if (handleCol && handleCol.notnull === 1) {
+    db.exec(`
+      BEGIN;
+      ALTER TABLE submission_comments RENAME TO submission_comments_v1;
+      CREATE TABLE submission_comments (
+        id             INTEGER PRIMARY KEY AUTOINCREMENT,
+        submission_id  INTEGER NOT NULL,
+        body           TEXT NOT NULL,
+        twitter_handle TEXT,
+        display_name   TEXT,
+        created_at     TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (submission_id) REFERENCES submissions(id) ON DELETE CASCADE
+      );
+      INSERT INTO submission_comments
+        SELECT id, submission_id, body, twitter_handle, display_name, created_at
+        FROM submission_comments_v1;
+      DROP TABLE submission_comments_v1;
+      CREATE INDEX IF NOT EXISTS idx_comments_sub_created
+        ON submission_comments(submission_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_comments_handle
+        ON submission_comments(LOWER(twitter_handle));
+      COMMIT;
+    `);
+  }
+})();
+
 // ---------- helpers ----------
 
 function clean(str, max) {
@@ -1153,6 +1184,18 @@ app.get('/api/submissions/:id', (req, res) => {
      LIMIT 200`
   ).all(id);
 
+  // Ranking positions (approx): count how many approved submissions beat this one.
+  const aiRankRow = db.prepare(
+    `SELECT 1 + COUNT(*) AS rank FROM submissions
+     WHERE approved = 1 AND ai_score > COALESCE(?, -1)`
+  ).get(hydrated.ai_score ?? null);
+  const likesRankRow = db.prepare(
+    `SELECT 1 + COUNT(*) AS rank FROM submissions
+     WHERE approved = 1 AND likes > COALESCE(?, -1)`
+  ).get(hydrated.likes ?? null);
+  hydrated.ai_rank    = aiRankRow?.rank ?? null;
+  hydrated.likes_rank = likesRankRow?.rank ?? null;
+
   const token = typeof req.query.token === 'string' ? req.query.token : null;
   if (token && verifyDeleteToken(id, token)) {
     hydrated.pending_updates = db.prepare(
@@ -1318,15 +1361,16 @@ app.post('/api/submissions/:id/comments', smallJson, commentLimiter, (req, res) 
   const body = clean(b.body, COMMENT_MAX_LEN);
   if (!body) return res.status(400).json({ error: 'comment body is required' });
 
-  const normalizedHandle = normalizeHandle(b.twitter_handle);
-  if (!normalizedHandle) {
-    return res.status(400).json({
-      error:
-        'twitter_handle is required — every DiscoverHermes comment is tied to a real X handle. Paste yours and try again.',
-    });
+  // Accept either a twitter handle OR a display name — just one is needed.
+  // If the value looks like a handle (no spaces, ≤40 chars), store as handle.
+  // Otherwise treat it as a display name.
+  const rawName = clean(b.name || b.twitter_handle || b.display_name, 60);
+  if (!rawName) {
+    return res.status(400).json({ error: 'a name or @handle is required to comment' });
   }
-
-  const displayName = clean(b.display_name, 60) || null;
+  const looksLikeHandle = /^@?[A-Za-z0-9_]{1,40}$/.test(rawName.replace(/^@/, ''));
+  const normalizedHandle = looksLikeHandle ? normalizeHandle(rawName) : null;
+  const displayName      = looksLikeHandle ? null : rawName;
 
   const secret = scanForSecrets([body, displayName]);
   if (secret) {

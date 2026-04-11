@@ -532,34 +532,24 @@
         if (!raw) return '';
         const trimmed = raw.trim();
 
-        // Tokenize into sentences. Split on ". ", "! ", "? " followed by
-        // a capital or end-of-string, keeping the terminator with its sentence.
-        const sentenceRe = /([^.!?]*[.!?])(?:\s+(?=[A-Z"'])|$)/g;
-        const sentences = [];
-        let match;
-        let lastIdx = 0;
-        while ((match = sentenceRe.exec(trimmed)) !== null) {
-          const s = match[1].trim();
-          if (s.length >= 8) sentences.push({ text: s, start: match.index, end: match.index + match[0].length });
-          lastIdx = match.index + match[0].length;
-        }
-        // Remainder (no trailing terminator)
-        const tail = trimmed.slice(lastIdx).trim();
-        if (tail.length >= 8) sentences.push({ text: tail, start: lastIdx, end: trimmed.length });
+        // Split into paragraphs first (double newline), then tokenize sentences.
+        const rawParas = trimmed.split(/\n\n+/).filter(Boolean);
 
-        // If we couldn't tokenize, bold the whole thing.
-        if (sentences.length === 0) {
-          return `<strong class="story-lede">${escapeHtml(trimmed)}</strong>`;
-        }
-        // Single sentence — bold it.
-        if (sentences.length === 1) {
-          return `<strong class="story-lede">${escapeHtml(sentences[0].text)}</strong>`;
+        function tokenizeSentences(para) {
+          const re = /([^.!?]*[.!?])(?:\s+(?=[A-Z"'])|$)/g;
+          const out = [];
+          let m, lastIdx = 0;
+          while ((m = re.exec(para)) !== null) {
+            const s = m[1].trim();
+            if (s.length >= 8) out.push({ text: s, start: m.index });
+            lastIdx = m.index + m[0].length;
+          }
+          const tail = para.slice(lastIdx).trim();
+          if (tail.length >= 8) out.push({ text: tail, start: lastIdx });
+          return out;
         }
 
-        // Score each non-first sentence for "importance":
-        // +3 for digits (concrete numbers), +2 for capital-letter words (proper nouns),
-        // +1 if length is in a good "meaty" range (30-150), -1 if very short.
-        function score(s) {
+        function scoreImportance(s) {
           let n = 0;
           if (/\d/.test(s)) n += 3;
           const caps = (s.match(/\b[A-Z][a-z]{2,}/g) || []).length;
@@ -569,22 +559,47 @@
           return n;
         }
 
-        const [first, ...rest] = sentences;
-        let bestIdx = 0;
-        let bestScore = -Infinity;
-        rest.forEach((s, i) => {
-          const sc = score(s.text);
-          if (sc > bestScore) { bestScore = sc; bestIdx = i; }
-        });
-        const second = rest[bestIdx];
-        const boldSet = new Set([first.start, second.start]);
+        // Collect all sentences across all paragraphs to find the two best.
+        const allSentences = rawParas.flatMap(tokenizeSentences);
+        const boldSet = new Set();
 
-        // Re-assemble the story in original order, wrapping bolded sentences.
-        return sentences.map((s) =>
-          boldSet.has(s.start)
+        if (allSentences.length > 0) {
+          // Always bold the first sentence.
+          boldSet.add(allSentences[0].text);
+          if (allSentences.length > 1) {
+            // Bold the highest-scoring remaining sentence.
+            let best = allSentences[1], bestScore = -Infinity;
+            for (let i = 1; i < allSentences.length; i++) {
+              const sc = scoreImportance(allSentences[i].text);
+              if (sc > bestScore) { bestScore = sc; best = allSentences[i]; }
+            }
+            boldSet.add(best.text);
+          }
+        }
+
+        function renderSentence(s) {
+          return boldSet.has(s.text)
             ? `<strong class="story-lede">${escapeHtml(s.text)}</strong>`
-            : escapeHtml(s.text)
-        ).join(' ');
+            : escapeHtml(s.text);
+        }
+
+        // Render as <p> per paragraph for visual breathing room.
+        if (rawParas.length > 1) {
+          return rawParas.map((para) => {
+            const sentences = tokenizeSentences(para);
+            const content = sentences.length
+              ? sentences.map(renderSentence).join(' ')
+              : escapeHtml(para);
+            return `<p class="detail-story">${content}</p>`;
+          }).join('');
+        }
+
+        // Single paragraph — render sentences joined with spaces inside one <p>.
+        const sentences = tokenizeSentences(rawParas[0] || trimmed);
+        const content = sentences.length
+          ? sentences.map(renderSentence).join(' ')
+          : escapeHtml(trimmed);
+        return `<p class="detail-story">${content}</p>`;
       }
 
       // "Living database" timeline: approved updates are public, pending
@@ -818,6 +833,17 @@
       const tagsBody = hasTags ? sideChipList(item.tags) : '';
       const tagsCard = sideCard('Tags', tagsBody);
 
+      // Rankings + community card — always show (even 0 likes is meaningful)
+      const totalAgents = null; // not available client-side; show rank position only
+      const rankCard = `
+        <div class="side-card rank-card">
+          <h3>Community</h3>
+          ${sideKv('Likes', String(Number(item.likes) || 0))}
+          ${item.likes_rank != null ? sideKv('Likes rank', `#${item.likes_rank}`) : ''}
+          ${item.ai_rank != null ? sideKv('AI score rank', `#${item.ai_rank}`) : ''}
+          <a class="ai-rankings-link" href="/rankings">View all rankings ↗</a>
+        </div>`;
+
       // ---------- gallery (secondary images, max 5) ----------
       // Author can add screenshots of the dashboard / terminal / output
       // from the detail page once posted. Stored as a JSON array on the
@@ -848,16 +874,31 @@
           <div class="gallery-add-status muted"></div>
         </label>` : '';
       const hasGallerySection = galleryList.length > 0 || isAuthor;
+      const carouselSlides = galleryList.map((url, i) => `
+        <div class="carousel-slide${i === 0 ? ' active' : ''}" data-idx="${i}">
+          <img src="${escapeHtml(url)}" alt="Gallery image ${i + 1}" loading="lazy" referrerpolicy="no-referrer" />
+          ${isAuthor ? `<button class="gallery-remove carousel-remove" type="button" data-gallery-url="${escapeHtml(url)}" title="Remove image">×</button>` : ''}
+        </div>`).join('');
+      const carouselDots = galleryList.length > 1
+        ? `<div class="carousel-dots">${galleryList.map((_, i) => `<button class="carousel-dot${i === 0 ? ' active' : ''}" data-idx="${i}" type="button"></button>`).join('')}</div>`
+        : '';
       const gallerySectionHtml = hasGallerySection ? `
         <section class="detail-section gallery-section">
           <h2>Gallery${galleryList.length ? ` <span class="tab-badge">${galleryList.length}/${GALLERY_MAX}</span>` : ''}</h2>
           ${galleryList.length === 0 && isAuthor
             ? `<p class="muted gallery-empty">Show off what you built — upload screenshots of the dashboard, terminal output, Telegram chat, whatever is most visual. Up to ${GALLERY_MAX} images.</p>`
             : ''}
-          <div class="gallery-grid">
-            ${galleryItemsHtml}
-            ${galleryAddSlotHtml}
-          </div>
+          ${galleryList.length > 0 ? `
+          <div class="gallery-carousel">
+            <div class="carousel-track">
+              ${carouselSlides}
+            </div>
+            ${galleryList.length > 1 ? `
+            <button class="carousel-prev" type="button" aria-label="Previous">&#8249;</button>
+            <button class="carousel-next" type="button" aria-label="Next">&#8250;</button>` : ''}
+            ${carouselDots}
+          </div>` : ''}
+          ${galleryAddSlotHtml ? `<div class="gallery-add-wrap">${galleryAddSlotHtml}</div>` : ''}
         </section>` : '';
 
       // ---------- comments (flat, handle-required) ----------
@@ -894,13 +935,9 @@
         <section class="detail-section comments-section">
           <h2>Comments${commentsList.length ? ` <span class="tab-badge">${commentsList.length}</span>` : ''}</h2>
           <form class="comment-form" onsubmit="return false;">
-            <div class="comment-form-row">
-              <input type="text" class="comment-handle-input" maxlength="40"
-                     placeholder="your X handle (required, e.g. shaughnessy119)" />
-              <input type="text" class="comment-name-input" maxlength="60"
-                     placeholder="display name (optional)" />
-            </div>
-            <textarea class="comment-body-input" rows="3" maxlength="${600}"
+            <input type="text" class="comment-name-input" maxlength="60"
+                   placeholder="your name or @handle" />
+            <textarea class="comment-body-input" rows="3" maxlength="600"
                       placeholder="What do you think? Ask a question, share a tip, tell them you love it."></textarea>
             <div class="comment-form-foot">
               <span class="comment-status muted"></span>
@@ -921,7 +958,7 @@
         <div class="overview-panel">
           <section class="detail-section">
             <h2>The story</h2>
-            <p class="detail-story">${formatStory(item.story || item.description || '')}</p>
+            <div class="detail-story-wrap">${formatStory(item.story || item.description || '')}</div>
           </section>
 
           ${hasGotchas ? `
@@ -955,53 +992,24 @@
         </div>
 
         <div class="detail-layout">
-          <aside class="detail-side">
+          <aside class="detail-side detail-side-left">
             ${authorCard}
             ${engagementCard}
+            ${rankCard}
+            ${metricHtml}
             ${aiCard}
+            ${buildCard}
+            ${techCard}
+            ${infraCard}
+            ${codeCard}
+            ${tagsCard}
           </aside>
 
           <div class="detail-main">
             ${overviewPanel}
-            ${hasTech ? `<section class="detail-section spec-section"><h2>Tech stack</h2>
-              <div class="spec-grid">
-                ${sideKv('Platform', item.platform)}
-                ${sideKv('Trigger', item.trigger_type)}
-                ${sideKv('Schedule', item.trigger_detail)}
-                ${item.integrations?.length ? `<div class="spec-row"><span class="spec-label">Integrations</span><span class="spec-val">${item.integrations.map(v => `<span class="chip">${escapeHtml(v)}</span>`).join('')}</span></div>` : ''}
-                ${item.tools_used?.length ? `<div class="spec-row"><span class="spec-label">Tools</span><span class="spec-val">${item.tools_used.map(v => `<span class="chip">${escapeHtml(v)}</span>`).join('')}</span></div>` : ''}
-                ${item.data_sources?.length ? `<div class="spec-row"><span class="spec-label">Data sources</span><span class="spec-val">${item.data_sources.map(v => `<span class="chip">${escapeHtml(v)}</span>`).join('')}</span></div>` : ''}
-                ${item.output_channels?.length ? `<div class="spec-row"><span class="spec-label">Outputs to</span><span class="spec-val">${item.output_channels.map(v => `<span class="chip">${escapeHtml(v)}</span>`).join('')}</span></div>` : ''}
-              </div></section>` : ''}
-            ${hasInfra ? `<section class="detail-section spec-section"><h2>Infrastructure</h2>
-              <div class="spec-grid">
-                ${sideKv('Model', item.model)}
-                ${sideKv('Provider', item.model_provider)}
-                ${sideKv('Deployment', item.deployment)}
-                ${sideKv('Host', item.host)}
-                ${sideKv('Context', item.context_window ? fmtNumber(item.context_window) + ' tokens' : null)}
-                ${sideKv('Memory', item.memory_type)}
-              </div></section>` : ''}
-            ${hasBuildDetails ? `<section class="detail-section spec-section"><h2>Builder profile</h2>
-              <div class="spec-grid">
-                ${sideKv('Automation', humanize(item.automation_level))}
-                ${sideKv('Complexity', humanize(item.complexity_tier))}
-                ${sideKv('Time to build', humanize(item.time_to_build))}
-                ${sideKv('Reliability', humanize(item.reliability))}
-                ${sideKv('Cost tier', humanize(item.cost_tier))}
-                ${sideKv('Source', humanize(item.source_available))}
-              </div></section>` : ''}
-            ${hasCode ? `<section class="detail-section spec-section"><h2>Source & code</h2>
-              <div class="spec-grid">
-                ${item.github_url ? `<div class="spec-row"><span class="spec-label">GitHub</span><span class="spec-val"><a class="ext-link" href="${escapeHtml(item.github_url)}" target="_blank" rel="noopener">${escapeHtml(item.github_url.replace(/^https?:\/\//, '').replace(/^www\./, ''))}</a></span></div>` : ''}
-                ${item.source_url ? `<div class="spec-row"><span class="spec-label">Gist / source</span><span class="spec-val"><a class="ext-link" href="${escapeHtml(item.source_url)}" target="_blank" rel="noopener">${escapeHtml(item.source_url.replace(/^https?:\/\//, '').replace(/^www\./, ''))}</a></span></div>` : ''}
-              </div></section>` : ''}
-            ${hasTags ? `<section class="detail-section spec-section"><h2>Tags</h2>
-              <div class="tag-cloud">${item.tags.map(t => `<span class="chip">${escapeHtml(t)}</span>`).join('')}</div></section>` : ''}
-            ${gallerySectionHtml}
-            ${commentsSectionHtml}
           </div>
-        </div>`;
+        </div>
+      `;
 
       const likeBtn = root.querySelector('.like-btn');
       if (likeBtn) {
@@ -1123,6 +1131,36 @@
         });
       }
 
+      // ---------- gallery carousel ----------
+      const carousel = root.querySelector('.gallery-carousel');
+      if (carousel) {
+        const slides = Array.from(carousel.querySelectorAll('.carousel-slide'));
+        const dots = Array.from(carousel.querySelectorAll('.carousel-dot'));
+        let current = 0;
+
+        function goTo(idx) {
+          slides[current]?.classList.remove('active');
+          dots[current]?.classList.remove('active');
+          current = ((idx % slides.length) + slides.length) % slides.length;
+          slides[current]?.classList.add('active');
+          dots[current]?.classList.add('active');
+        }
+
+        carousel.querySelector('.carousel-prev')?.addEventListener('click', () => goTo(current - 1));
+        carousel.querySelector('.carousel-next')?.addEventListener('click', () => goTo(current + 1));
+        dots.forEach((dot) => dot.addEventListener('click', () => goTo(Number(dot.dataset.idx))));
+
+        // Touch/swipe support
+        let touchX = null;
+        carousel.addEventListener('touchstart', (e) => { touchX = e.touches[0].clientX; }, { passive: true });
+        carousel.addEventListener('touchend', (e) => {
+          if (touchX == null) return;
+          const dx = e.changedTouches[0].clientX - touchX;
+          if (Math.abs(dx) > 40) goTo(dx < 0 ? current + 1 : current - 1);
+          touchX = null;
+        }, { passive: true });
+      }
+
       // Post-an-update form (author only).
       const postBtn = root.querySelector('.post-update-btn');
       if (postBtn) {
@@ -1199,14 +1237,12 @@
       const commentSubmit = root.querySelector('.comment-submit');
       if (commentSubmit) {
         commentSubmit.addEventListener('click', async () => {
-          const handleInput = root.querySelector('.comment-handle-input');
           const nameInput = root.querySelector('.comment-name-input');
           const bodyInput = root.querySelector('.comment-body-input');
           const statusEl = root.querySelector('.comment-status');
-          const handle = (handleInput?.value || '').trim().replace(/^@/, '');
-          const displayName = (nameInput?.value || '').trim();
+          const name = (nameInput?.value || '').trim();
           const body = (bodyInput?.value || '').trim();
-          if (!handle) { if (statusEl) statusEl.textContent = 'X handle is required.'; return; }
+          if (!name) { if (statusEl) statusEl.textContent = 'a name or @handle is required.'; return; }
           if (!body) { if (statusEl) statusEl.textContent = 'write something first.'; return; }
           commentSubmit.disabled = true;
           if (statusEl) statusEl.textContent = 'posting…';
@@ -1214,7 +1250,7 @@
             const res = await fetch(`/api/submissions/${id}/comments`, {
               method: 'POST',
               headers: { 'content-type': 'application/json' },
-              body: JSON.stringify({ twitter_handle: handle, display_name: displayName || undefined, body }),
+              body: JSON.stringify({ name, body }),
             });
             if (!res.ok) {
               const { error } = await res.json().catch(() => ({}));
