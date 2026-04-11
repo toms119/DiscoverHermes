@@ -819,6 +819,128 @@ app.delete('/api/submissions/:id', (req, res) => {
   res.json({ ok: true, deleted: id });
 });
 
+// Author-only edit: mutate a narrow whitelist of fields on an existing
+// submission. Authenticated via the same delete_token as delete/updates —
+// only the person who originally posted (or their agent's stored token)
+// can edit. This is the backing endpoint for the "add an image later"
+// flow: if submit.html Part 10 had to POST the card without an image,
+// the user can later ask their agent to PATCH image_url + image_prompt,
+// or fix a typo in title/pitch/story.
+//
+// Whitelist is deliberately tight. Things like model/integrations/tags/
+// twitter_handle are NOT editable here — if any of those are wrong, the
+// right move is to delete and repost fresh. Especially twitter_handle:
+// letting it mutate would defeat the one-card-per-handle rule.
+const EDITABLE_FIELDS = new Set([
+  'title', 'pitch', 'story', 'image_url', 'image_prompt',
+  'display_name', 'website',
+]);
+app.patch('/api/submissions/:id', smallJson, (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return res.status(400).json({ error: 'invalid id' });
+
+  const token =
+    (req.body && req.body.token) || req.query.token || req.get('x-delete-token');
+  if (!token || typeof token !== 'string') {
+    return res.status(401).json({ error: 'delete token required' });
+  }
+
+  const existing = db.prepare('SELECT * FROM submissions WHERE id = ?').get(id);
+  if (!existing) return res.status(404).json({ error: 'not found' });
+  if (!verifyDeleteToken(id, token)) {
+    return res.status(403).json({ error: 'invalid delete token' });
+  }
+
+  const b = req.body || {};
+  const patch = {};
+
+  // Only accept keys in the whitelist. Silently ignore anything else so
+  // a well-meaning agent can send a bigger object without erroring.
+  for (const key of Object.keys(b)) {
+    if (key === 'token') continue;
+    if (!EDITABLE_FIELDS.has(key)) continue;
+    patch[key] = b[key];
+  }
+
+  if (Object.keys(patch).length === 0) {
+    return res.status(400).json({
+      error: `no editable fields provided. editable: ${[...EDITABLE_FIELDS].join(', ')}`,
+    });
+  }
+
+  // Per-field validation. Same rules as the create path so nothing
+  // can sneak in via PATCH that would have been rejected via POST.
+  const clean140 = (v) => clean(v, 140);
+  const clean300 = (v) => clean(v, 300);
+  const clean2000 = (v) => clean(v, 2000);
+  const clean500 = (v) => clean(v, 500);
+  const clean600 = (v) => clean(v, 600);
+  const clean60 = (v) => clean(v, 60);
+  const clean200 = (v) => clean(v, 200);
+
+  if ('title' in patch) {
+    const v = clean140(patch.title);
+    if (!v) return res.status(400).json({ error: 'title cannot be empty' });
+    patch.title = v;
+  }
+  if ('pitch' in patch) {
+    const v = clean300(patch.pitch);
+    if (!v) return res.status(400).json({ error: 'pitch cannot be empty' });
+    patch.pitch = v;
+  }
+  if ('story' in patch) {
+    const v = clean2000(patch.story);
+    if (!v) return res.status(400).json({ error: 'story cannot be empty' });
+    patch.story = v;
+    // Keep the legacy description column in sync.
+    patch.description = v;
+  }
+  if ('image_url' in patch) {
+    const v = clean500(patch.image_url);
+    if (v && !isAllowedImageUrl(v)) {
+      return res.status(400).json({
+        error: 'image_url must be http(s) or /u/... from /api/uploads',
+      });
+    }
+    patch.image_url = v || null;
+  }
+  if ('image_prompt' in patch) {
+    patch.image_prompt = clean600(patch.image_prompt);
+  }
+  if ('display_name' in patch) {
+    patch.display_name = clean60(patch.display_name);
+  }
+  if ('website' in patch) {
+    const v = clean200(patch.website);
+    if (v && !isHttpUrl(v)) {
+      return res.status(400).json({ error: 'website must be an http(s) URL' });
+    }
+    patch.website = v || null;
+  }
+
+  // Safety scan across any free-text edits, same as POST.
+  const leak = scanForSecrets([
+    patch.title, patch.pitch, patch.story, patch.display_name, patch.website,
+  ]);
+  if (leak) {
+    return res.status(400).json({
+      error: `looks like a credential (${leak}) in the edit — strip it and retry`,
+    });
+  }
+
+  // Apply the patch. Bumps last_updated_at so the feed can surface freshly-
+  // edited cards the same way it surfaces cards with new timeline updates.
+  const setCols = Object.keys(patch);
+  const setClause = setCols.map((k) => `${k} = ?`).join(', ');
+  const values = setCols.map((k) => patch[k]);
+  db.prepare(
+    `UPDATE submissions SET ${setClause}, last_updated_at = datetime('now') WHERE id = ?`
+  ).run(...values, id);
+
+  const updated = db.prepare('SELECT * FROM submissions WHERE id = ?').get(id);
+  res.json(hydrate(updated));
+});
+
 // ---------- submissions: list with filters ----------
 app.get('/api/submissions', (req, res) => {
   const where = ['approved = 1'];
