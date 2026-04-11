@@ -12,7 +12,9 @@ const Database = require('better-sqlite3');
 
 const PORT = process.env.PORT || 3000;
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || null;
-const DATA_DIR = path.join(__dirname, 'data');
+// DATA_DIR is overridable so production (e.g. Railway) can point at a
+// mounted volume like /data. Local dev falls back to ./data.
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
 const db = new Database(path.join(DATA_DIR, 'discoverhermes.db'));

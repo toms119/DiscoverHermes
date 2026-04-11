@@ -25,10 +25,11 @@ SQLite DB is created at `data/discoverhermes.db` on first run.
 
 ## Environment variables
 
-| Var            | Purpose                                                       |
-| -------------- | ------------------------------------------------------------- |
-| `PORT`         | Port to bind (default `3000`)                                 |
-| `ADMIN_TOKEN`  | If set, enables `/api/admin/*` endpoints gated by this token  |
+| Var            | Purpose                                                            |
+| -------------- | ------------------------------------------------------------------ |
+| `PORT`         | Port to bind (default `3000`, Railway injects this automatically)  |
+| `DATA_DIR`     | Where to put the SQLite file (default `./data`)                    |
+| `ADMIN_TOKEN`  | If set, enables `/api/admin/*` endpoints gated by this token       |
 
 ## API
 
@@ -61,4 +62,16 @@ Header: `x-admin-token: ...`
 
 ## Deploying
 
-It's just a Node server + a SQLite file. Any VPS, Fly.io, Render, Railway, etc. Make sure the `data/` directory is on a persistent volume.
+It's just a Node server + a SQLite file. Any VPS, Fly.io, Render, Railway, etc. The only requirement is that wherever `DATA_DIR` points must be on a persistent volume — otherwise every redeploy wipes the feed.
+
+### Railway
+
+1. **New Project → Deploy from GitHub repo** → pick this repo and the `claude/hermes-discovery-portal-Zg0xi` branch.
+2. Railway auto-detects Node via Nixpacks and runs `npm install && node server.js` (see `railway.json`).
+3. In the service → **Settings → Volumes**, create a volume mounted at `/data`.
+4. In **Variables**, set:
+   - `DATA_DIR=/data`
+   - `ADMIN_TOKEN=<some long random string>` (optional, only needed if you want moderation endpoints)
+5. Under **Settings → Networking**, click **Generate Domain** for a `*.up.railway.app` URL, then add your custom domain (`discoverhermes.com`) and point your DNS `CNAME` at the target Railway gives you.
+
+That's the whole deploy. `PORT` is injected by Railway automatically; the server already reads it.
