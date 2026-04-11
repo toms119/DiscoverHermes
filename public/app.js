@@ -779,7 +779,12 @@
 
     const donutKeys = new Set(['by_deployment', 'by_trigger', 'by_memory', 'tool_use', 'rag']);
     const horizontalKeys = new Set(['by_integration', 'by_tool', 'by_skill', 'by_plugin', 'by_model', 'by_host']);
-    const lineKeys = new Set(['daily', 'cumulative']);
+    const lineKeys = new Set(['daily', 'cumulative', 'cumulative_tokens']);
+    const LINE_LABELS = {
+      daily: 'new agents',
+      cumulative: 'total agents',
+      cumulative_tokens: 'tokens processed',
+    };
 
     loadHeadline().then((data) => {
       if (!data) return;
@@ -790,7 +795,7 @@
           canvas.outerHTML = '<div class="empty-chart">no data yet</div>';
           return;
         }
-        if (lineKeys.has(key)) lineChart(canvas, rows, key === 'cumulative' ? 'total agents' : 'new agents');
+        if (lineKeys.has(key)) lineChart(canvas, rows, LINE_LABELS[key] || key);
         else if (donutKeys.has(key)) donutChart(canvas, rows);
         else barChart(canvas, rows, horizontalKeys.has(key));
       });

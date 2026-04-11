@@ -182,6 +182,22 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_submissions_deploy   ON submissions(deployment);
 `);
 
+// ---------- daily totals snapshot ----------
+// Lazy "cron" for the cumulative growth charts on /stats. On each
+// /api/stats request we check whether today's snapshot exists; if not,
+// we insert one with the current totals. That gives us an accurate
+// time series for "total agents" and "total tokens processed" over
+// time, including contributions from updates that raise tokens_total
+// after initial submission — a pure running-sum of created_at would
+// miss those.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS daily_totals (
+    date         TEXT PRIMARY KEY,
+    total_agents INTEGER NOT NULL,
+    total_tokens INTEGER NOT NULL
+  );
+`);
+
 // ---------- living-database updates ----------
 // Each submission can have a timeline of short "what's new" updates the
 // author's agent pushes over time. Rejected updates are hard-deleted
@@ -920,8 +936,30 @@ app.get('/api/tags', (_req, res) => {
   res.json(rows);
 });
 
+// Lazy daily snapshot. Called at the top of /api/stats — cheap when
+// today's row exists (one index lookup), writes one row on the first
+// stats call of the day. Avoids a separate cron process.
+function maybeSnapshotDailyTotals() {
+  const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD UTC
+  const existing = db
+    .prepare('SELECT 1 FROM daily_totals WHERE date = ?')
+    .get(today);
+  if (existing) return;
+  const totals = db.prepare(
+    `SELECT
+       COUNT(*) AS agents,
+       COALESCE(SUM(tokens_total), 0) AS tokens
+     FROM submissions WHERE approved = 1`
+  ).get();
+  db.prepare(
+    `INSERT INTO daily_totals (date, total_agents, total_tokens)
+     VALUES (?, ?, ?)`
+  ).run(today, totals.agents, totals.tokens);
+}
+
 // ---------- stats: aggregates for dashboard ----------
 app.get('/api/stats', (_req, res) => {
+  maybeSnapshotDailyTotals();
   const one = (sql, ...p) => db.prepare(sql).get(...p);
   const many = (sql, ...p) => db.prepare(sql).all(...p);
 
@@ -978,6 +1016,16 @@ app.get('/api/stats', (_req, res) => {
   const daily      = dailyAll.slice(-30);
   const cumulative = cumulativeAll.slice(-60); // show a 60-day growth curve
 
+  // Cumulative tokens processed: pulled from daily_totals snapshots.
+  // Each row is an authoritative end-of-day total, so the chart just
+  // plots them directly. Only the last 60 days for readability.
+  const cumulativeTokens = many(
+    `SELECT date AS label, total_tokens AS count
+     FROM daily_totals
+     ORDER BY date ASC
+     LIMIT 60`
+  );
+
   res.json({
     totals,
     by_category:     groupScalar('category'),
@@ -1003,6 +1051,7 @@ app.get('/api/stats', (_req, res) => {
     rag:             boolDist('rag'),
     daily,
     cumulative,
+    cumulative_tokens: cumulativeTokens,
   });
 });
 
