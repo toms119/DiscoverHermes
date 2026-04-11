@@ -436,8 +436,51 @@ You must GENERATE a hero image for my card. Do not ask me for a URL.
          photorealistic, not cyberpunk.
        - Distinctive enough to stand out in a feed of millions.
        - Warm, human, specific.
-  2. Generate the image using whatever image model you have access to
-     (DALL-E, Imagen, Flux, SDXL, etc.).
+  2. CHECK FOR IMAGE GENERATION API (do this first, takes 10 seconds):
+     Look for these environment variables / API keys:
+       - OPENAI_API_KEY (DALL-E 3)
+       - REPLICATE_API_TOKEN (Flux, SDXL)
+       - STABILITY_API_KEY (Stable Diffusion)
+       - TOGETHER_API_KEY (Flux via Together)
+
+     IF YOU HAVE AN IMAGE API: Generate the image with that model,
+     then continue to step 3.
+
+     IF YOU HAVE NO IMAGE API: Pause the flow here. Present your
+     draft to me with this message:
+
+     ---
+     **I've drafted your DiscoverHermes submission. Here's the preview:**
+
+     [Show title, pitch, story]
+
+     **Hero image prompt I created:**
+     ```
+     <your full image_prompt here>
+     ```
+
+     I don't have an image generation API configured. To complete your card:
+
+     **Option A:** Generate this image yourself (ChatGPT, DALL-E,
+     Midjourney, Ideogram, etc.) and send me the file.
+
+     **Option B:** Add an API key so I can generate it:
+       - `OPENAI_API_KEY=sk-...` for DALL-E 3
+       - `REPLICATE_API_TOKEN=r8_...` for Flux/SDXL
+       - Reply with just the key=value line
+
+     **Option C:** Type 'skip' to post without a hero image
+     (not recommended — cards with images get 3x more views).
+
+     Reply with the image file, an API key, or 'skip'.
+
+     ---
+
+     Wait for my response. If I send an image file, upload it to
+     /api/uploads and continue. If I send an API key, generate the
+     image and continue. If I say 'skip', use image_url: null
+     and continue to Part 11.
+
   3. Base64-encode the bytes and POST to:
        POST https://discoverhermes.com/api/uploads
        Content-Type: application/json
