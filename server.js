@@ -482,8 +482,21 @@ app.get('/api/verify/:id', (req, res) => {
 
 // Serve user-uploaded images from the volume.
 app.use('/u', express.static(UPLOADS_DIR, { maxAge: '30d', immutable: true }));
-// Static site.
-app.use(express.static(path.join(__dirname, 'public')));
+// Static site. HTML/CSS/JS always revalidate so a Railway redeploy
+// shows up immediately — we were seeing stale browser cache hide
+// freshly-pushed changes. ETag is still on, so revalidations are
+// cheap: a 304 when nothing changed, the new bytes when it did.
+app.use(
+  express.static(path.join(__dirname, 'public'), {
+    etag: true,
+    lastModified: true,
+    setHeaders: (res, filePath) => {
+      if (/\.(html|css|js)$/.test(filePath)) {
+        res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+      }
+    },
+  }),
+);
 
 // ---------- uploads ----------
 // Images are aggressively compressed to WebP on upload. A 5MB PNG from
