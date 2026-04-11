@@ -491,6 +491,27 @@ a { color: inherit; text-decoration: none; }
 }
 .kv-list { grid-column: 1 / -1; }
 
+/* v3 detail page: gotchas, satisfaction dots, external code links */
+.gotcha-list {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--text);
+  line-height: 1.55;
+}
+.gotcha-list li { margin-bottom: 8px; }
+.gotcha-list li:last-child { margin-bottom: 0; }
+.sat-dots {
+  letter-spacing: 4px;
+  color: #f5a623;
+  font-size: 16px;
+}
+.ext-link {
+  color: var(--accent, #7b5cff);
+  text-decoration: none;
+  word-break: break-all;
+}
+.ext-link:hover { text-decoration: underline; }
+
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));

@@ -24,6 +24,49 @@
     return String(n);
   }
 
+  // Turn kebab-case enum values ("fully-autonomous", "under-10") into the
+  // human-readable label we show in the UI ("Fully autonomous", "<$10/mo").
+  // Small lookup table for the cases where mechanical humanization isn't
+  // pretty enough.
+  const ENUM_LABELS = {
+    'fully-autonomous': 'Fully autonomous',
+    'human-in-loop':    'Human in the loop',
+    'on-demand-only':   'On demand only',
+    'small':            'Small (≤32k)',
+    'medium':           'Medium (32–128k)',
+    'large':            'Large (128k–1M)',
+    'massive':          'Massive (1M+)',
+    'free':             'Free',
+    'under-10':         '< $10 / mo',
+    '10-50':            '$10–50 / mo',
+    '50-200':           '$50–200 / mo',
+    '200-plus':         '$200+ / mo',
+    'high':             'High',
+    'medium-reliability': 'Medium',
+    'low':              'Low',
+    'wip':              'Work in progress',
+    'fully-open':       'Fully open source',
+    'partial-gist':     'Partial / gist',
+    'prompt-only':      'Prompt only',
+    'closed':           'Closed',
+    'under-an-hour':    'Under an hour',
+    'few-hours':        'A few hours',
+    'weekend':          'A weekend',
+    'week-plus':        'A week or more',
+    'ongoing':          'Ongoing',
+    'beginner':         'Beginner',
+    'intermediate':     'Intermediate',
+    'advanced':         'Advanced',
+    'expert':           'Expert',
+  };
+  function humanize(val) {
+    if (!val) return '';
+    if (ENUM_LABELS[val]) return ENUM_LABELS[val];
+    return String(val)
+      .replace(/[-_]+/g, ' ')
+      .replace(/^./, (c) => c.toUpperCase());
+  }
+
   // ---------- copy-to-clipboard (all pages) ----------
   document.querySelectorAll('.copy-btn').forEach((btn) => {
     btn.addEventListener('click', async () => {
@@ -308,6 +351,23 @@
         item.running_since || item.time_saved_per_week || item.runs_completed ||
         item.hours_used || item.approx_monthly_tokens;
 
+      // v3: the "Build details" block rolls up the structured tier/enum
+      // fields the Hermes agent asks about during the interview.
+      const hasBuildDetails =
+        item.automation_level || item.context_tier || item.cost_tier ||
+        item.reliability || item.source_available || item.time_to_build ||
+        item.complexity_tier || item.satisfaction;
+
+      const hasGotchas = Array.isArray(item.gotchas) && item.gotchas.length > 0;
+      const hasCode = item.github_url || item.source_url;
+
+      // Satisfaction is a 1..5 integer — render as filled/empty dots so it
+      // reads at a glance without pulling in an icon font.
+      function satisfactionDots(n) {
+        const v = Math.max(0, Math.min(5, Number(n) || 0));
+        return '●'.repeat(v) + '○'.repeat(5 - v);
+      }
+
       // Author banner: shown only when ?delete=<token> is in the URL (the
       // author kept their delete link). Includes both the delete button and
       // the Stripe verify CTA if the submission isn't verified yet.
@@ -380,6 +440,38 @@
               ${kv('Memory', item.memory_type)}
               ${kv('Tool use', item.tool_use == null ? null : (item.tool_use ? 'yes' : 'no'))}
               ${kv('RAG', item.rag == null ? null : (item.rag ? 'yes' : 'no'))}
+            </div>
+          </section>` : ''}
+
+          ${hasBuildDetails ? `
+          <section class="detail-section">
+            <h2>Build details</h2>
+            <div class="kv-grid">
+              ${kv('Automation', humanize(item.automation_level))}
+              ${kv('Context window', humanize(item.context_tier))}
+              ${kv('Cost tier', humanize(item.cost_tier))}
+              ${kv('Reliability', humanize(item.reliability))}
+              ${kv('Source available', humanize(item.source_available))}
+              ${kv('Time to build', humanize(item.time_to_build))}
+              ${kv('Complexity', humanize(item.complexity_tier))}
+              ${item.satisfaction ? `<div class="kv"><span class="kv-label">Builder satisfaction</span><span class="kv-value sat-dots" title="${item.satisfaction} / 5">${satisfactionDots(item.satisfaction)}</span></div>` : ''}
+            </div>
+          </section>` : ''}
+
+          ${hasGotchas ? `
+          <section class="detail-section">
+            <h2>Gotchas &amp; lessons</h2>
+            <ul class="gotcha-list">
+              ${item.gotchas.map((g) => `<li>${escapeHtml(g)}</li>`).join('')}
+            </ul>
+          </section>` : ''}
+
+          ${hasCode ? `
+          <section class="detail-section">
+            <h2>Source &amp; code</h2>
+            <div class="kv-grid">
+              ${item.github_url ? `<div class="kv"><span class="kv-label">GitHub</span><span class="kv-value"><a class="ext-link" href="${escapeHtml(item.github_url)}" target="_blank" rel="noopener">${escapeHtml(item.github_url)}</a></span></div>` : ''}
+              ${item.source_url ? `<div class="kv"><span class="kv-label">Gist / source</span><span class="kv-value"><a class="ext-link" href="${escapeHtml(item.source_url)}" target="_blank" rel="noopener">${escapeHtml(item.source_url)}</a></span></div>` : ''}
             </div>
           </section>` : ''}
 
