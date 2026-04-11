@@ -1585,16 +1585,18 @@ app.post('/api/admin/github-stats', smallJson, async (req, res) => {
     }
     const html = await resp.text();
 
-    // Extract stats using regex
-    const starsMatch = html.match(/([\d.]+)k\s*Stars/);
-    const forksMatch = html.match(/([\d.]+)k\s*Forks/);
-    const contributorsMatch = html.match(/(\d+)\s*Contributors/);
-    const rankMatch = html.match(/Global Rank\s*#(\d+)/);
-    const weeklyStarsMatch = html.match(/New stars\s*\+?([\d.]+k)/);
-    const pushesMatch = html.match(/(\d+)\s*Pushes/);
-    const issuesMatch = html.match(/Issues closed\s*(\d+)/);
-
+    // Parse star-history page for stats
     const parseK = (m) => m ? Math.round(parseFloat(m[1]) * 1000) : 0;
+
+    // Extract stats using regex - patterns match star-history.com page structure
+    // The sidebar shows: "48.2k Stars #421 Global Rank 6.2k Forks 286 Contributors"
+    const starsMatch = html.match(/([\d.]+)k\s*Stars/i);
+    const forksMatch = html.match(/([\d.]+)k\s*Forks/i);
+    const contributorsMatch = html.match(/(\d+)\s*Contributors/i);
+    const rankMatch = html.match(/Global Rank\s*#(\d+)/i) || html.match(/#(\d+)\s*hermes-agent/i);
+    const weeklyStarsMatch = html.match(/New stars\s*\+?([\d.]+k)/i) || html.match(/\+([\d.]+k)\s*stars/i);
+    const pushesMatch = html.match(/(\d+)\s*Pushes/i);
+    const issuesMatch = html.match(/Issues closed\s*(\d+)/i);
 
     const stats = {
       stars: parseK(starsMatch),
