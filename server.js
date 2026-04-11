@@ -861,6 +861,13 @@ app.get('/api/submissions/:id', (req, res) => {
     hydrated.is_author = false;
   }
 
+  // Pre-built share link so the detail page share button works without
+  // any client-side tweet assembly. Same helper as the submission insert.
+  const cardUrl = `${PUBLIC_URL}/use-cases/${id}`;
+  hydrated.share_tweet_url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(
+    buildShareTweet(hydrated.title, hydrated.pitch, cardUrl)
+  )}`;
+
   res.json(hydrated);
 });
 

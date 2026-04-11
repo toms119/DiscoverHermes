@@ -465,6 +465,11 @@
 
       const hasGotchas = Array.isArray(item.gotchas) && item.gotchas.length > 0;
       const hasCode = item.github_url || item.source_url;
+      const hasAiScore = item.ai_score != null;
+      const hasTags = Array.isArray(item.tags) && item.tags.length > 0;
+      const approvedUpdates = Array.isArray(item.updates) ? item.updates : [];
+      const pendingUpdates = Array.isArray(item.pending_updates) ? item.pending_updates : [];
+      const updateCount = approvedUpdates.length;
 
       // Satisfaction is a 1..5 integer — render as filled/empty dots so it
       // reads at a glance without pulling in an icon font.
@@ -484,19 +489,24 @@
         if (Number.isNaN(d.getTime())) return iso;
         return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
       }
-      function renderUpdatesSection(it) {
+      function renderUpdatesPanel(it) {
         const approved = Array.isArray(it.updates) ? it.updates : [];
         const pending  = Array.isArray(it.pending_updates) ? it.pending_updates : [];
         const isAuthor = !!it.is_author;
-        if (!approved.length && !pending.length && !isAuthor) return '';
 
         const approvedHtml = approved.length
-          ? approved.map((u) => `
-              <li class="update-item">
-                <span class="update-date">${escapeHtml(fmtDate(u.approved_at || u.created_at))}</span>
-                <p class="update-body">${escapeHtml(u.body)}</p>
-              </li>`).join('')
-          : '<li class="update-empty muted">No updates yet. Check back — this agent is still evolving.</li>';
+          ? `<ol class="updates-timeline">
+               ${approved.map((u) => `
+                 <li class="update-item timeline">
+                   <span class="update-date">${escapeHtml(fmtDate(u.approved_at || u.created_at))}</span>
+                   <p class="update-body">${escapeHtml(u.body)}</p>
+                 </li>`).join('')}
+             </ol>`
+          : `<div class="updates-empty">
+               <div class="updates-empty-icon">◆</div>
+               <div class="updates-empty-title">No updates yet</div>
+               <p class="muted">Check back — this agent is still evolving. Builders post what's new here every week.</p>
+             </div>`;
 
         const pendingHtml = (isAuthor && pending.length)
           ? `<div class="pending-block">
@@ -518,7 +528,7 @@
         const postForm = isAuthor
           ? `<div class="post-update">
                <h3>Post an update</h3>
-               <p class="muted">Short "what's new" — new feature, insight, or change. Human-approved (you) before it goes live.</p>
+               <p class="muted">Short "what's new" — a new feature, an insight, something that changed. Your update is pending until you approve it below.</p>
                <textarea class="update-input" maxlength="600" rows="3" placeholder="e.g. Added a cost-watchdog step so the agent stops when my weekly API spend hits \$10."></textarea>
                <button class="post-update-btn primary" type="button">Submit update</button>
                <span class="post-update-status muted"></span>
@@ -526,12 +536,25 @@
           : '';
 
         return `
-          <section class="detail-section updates-section">
-            <h2>What's new</h2>
-            <ul class="update-list">${approvedHtml}</ul>
+          <div class="updates-panel">
+            ${approvedHtml}
             ${pendingHtml}
             ${postForm}
-          </section>`;
+          </div>`;
+      }
+
+      // ---------- sidebar helpers ----------
+      function sideCard(title, body) {
+        if (!body) return '';
+        return `<div class="side-card"><h3>${escapeHtml(title)}</h3>${body}</div>`;
+      }
+      function sideKv(label, value) {
+        if (value == null || value === '') return '';
+        return `<div class="side-kv"><span class="side-kv-label">${escapeHtml(label)}</span><span class="side-kv-value">${escapeHtml(value)}</span></div>`;
+      }
+      function sideChipList(arr) {
+        if (!Array.isArray(arr) || arr.length === 0) return '';
+        return `<div class="side-chips">${arr.map((v) => `<span class="chip">${escapeHtml(v)}</span>`).join('')}</div>`;
       }
 
       // Author banner: shown only when ?delete=<token> is in the URL (the
@@ -557,72 +580,125 @@
           </div>`;
       }
 
-      root.innerHTML = `
-        <article class="detail-article">
-          ${authorBanner}
-          <div class="detail-media">${media}</div>
-
-          <header class="detail-head">
-            ${item.category ? `<span class="chip chip-category">${escapeHtml(item.category)}</span>` : ''}
-            <h1>${escapeHtml(item.title)}${verifiedBadge(item)}</h1>
-            <p class="detail-pitch">${escapeHtml(item.pitch || '')}</p>
-            <div class="detail-byline">
-              ${handleBlock(item)}
-              ${item.website ? `· <a class="handle" href="${escapeHtml(item.website)}" target="_blank" rel="noopener">website</a>` : ''}
-              · <span class="muted">${escapeHtml((item.created_at || '').split(' ')[0] || '')}</span>
-              ${likeBtnHtml(item)}
+      // ---------- build the left sidebar (the creator + the impact) ----------
+      // Author card
+      const creatorName = item.display_name || (item.twitter_handle ? '@' + item.twitter_handle : 'Anonymous');
+      const creatorInitials = (creatorName || '?').trim().replace(/^@/, '').slice(0, 2).toUpperCase();
+      const creatorLink = item.twitter_handle
+        ? `<a class="side-link" href="https://x.com/${escapeHtml(item.twitter_handle)}" target="_blank" rel="noopener">@${escapeHtml(item.twitter_handle)}</a>`
+        : '';
+      const websiteLink = item.website
+        ? `<a class="side-link" href="${escapeHtml(item.website)}" target="_blank" rel="noopener">${escapeHtml((item.website || '').replace(/^https?:\/\//, '').replace(/\/$/, ''))}</a>`
+        : '';
+      const authorCard = `
+        <div class="side-card author-card">
+          <div class="author-row">
+            <div class="author-avatar">${escapeHtml(creatorInitials || '?')}</div>
+            <div class="author-meta">
+              <div class="author-name">${escapeHtml(creatorName)}</div>
+              ${item.verified ? `<span class="verified-badge">Verified</span>` : ''}
             </div>
-          </header>
+          </div>
+          ${creatorLink || websiteLink ? `
+            <div class="author-links">
+              ${creatorLink}
+              ${websiteLink}
+            </div>` : ''}
+          <div class="author-posted muted">Posted ${escapeHtml((item.created_at || '').split(' ')[0] || '')}</div>
+        </div>`;
 
+      // Engagement card — like button + share button
+      const shareHref = item.share_tweet_url ? escapeHtml(item.share_tweet_url) : '#';
+      const engagementCard = `
+        <div class="side-card engagement-card">
+          <div class="engagement-row">
+            ${likeBtnHtml(item).replace('class="like-btn"', 'class="like-btn like-btn-big"')}
+            <a class="share-btn" href="${shareHref}" target="_blank" rel="noopener" title="Share on X">
+              <span class="share-icon">↗</span> Share
+            </a>
+          </div>
+        </div>`;
+
+      // At-a-glance metric card — big numbers for the impact
+      const metricHtml = hasMetrics ? `
+        <div class="side-card metric-card">
+          <h3>At a glance</h3>
+          <div class="side-metrics">
+            ${item.time_saved_per_week ? `<div class="side-metric"><span class="side-metric-val">${item.time_saved_per_week}h</span><span class="side-metric-lbl">saved / week</span></div>` : ''}
+            ${item.runs_completed ? `<div class="side-metric"><span class="side-metric-val">${fmtNumber(item.runs_completed)}</span><span class="side-metric-lbl">runs</span></div>` : ''}
+            ${item.hours_used ? `<div class="side-metric"><span class="side-metric-val">${fmtNumber(item.hours_used)}</span><span class="side-metric-lbl">hours used</span></div>` : ''}
+            ${item.approx_monthly_tokens ? `<div class="side-metric"><span class="side-metric-val">${fmtNumber(item.approx_monthly_tokens)}</span><span class="side-metric-lbl">tokens / mo</span></div>` : ''}
+            ${item.running_since ? `<div class="side-metric wide"><span class="side-metric-val">${escapeHtml(item.running_since)}</span><span class="side-metric-lbl">running since</span></div>` : ''}
+          </div>
+        </div>` : '';
+
+      // AI score card
+      const aiCard = hasAiScore ? `
+        <div class="side-card ai-card">
+          <h3>AI Score</h3>
+          <div class="ai-card-row">
+            <span class="rank-grade grade-${item.ai_grade || 'C'}">${escapeHtml(item.ai_grade || '—')}</span>
+            <div>
+              <div class="ai-score-num">${item.ai_score}<span class="ai-score-unit">/100</span></div>
+              <div class="score-bar"><div class="score-fill" style="width: ${item.ai_score}%"></div></div>
+            </div>
+          </div>
+          ${item.featured && item.featured_reason ? `<p class="ai-featured muted">★ ${escapeHtml(item.featured_reason)}</p>` : ''}
+        </div>` : '';
+
+      // Build profile card (satisfaction, complexity, etc.)
+      const buildBody = hasBuildDetails ? `
+        ${item.satisfaction ? `<div class="side-kv"><span class="side-kv-label">Satisfaction</span><span class="side-kv-value sat-dots" title="${item.satisfaction} / 5">${satisfactionDots(item.satisfaction)}</span></div>` : ''}
+        ${sideKv('Automation', humanize(item.automation_level))}
+        ${sideKv('Complexity', humanize(item.complexity_tier))}
+        ${sideKv('Time to build', humanize(item.time_to_build))}
+        ${sideKv('Reliability', humanize(item.reliability))}
+        ${sideKv('Cost tier', humanize(item.cost_tier))}
+        ${sideKv('Context', humanize(item.context_tier))}
+        ${sideKv('Source', humanize(item.source_available))}
+      ` : '';
+      const buildCard = sideCard('Builder profile', buildBody);
+
+      // ---------- build the right sidebar (how it's built) ----------
+      const techBody = hasTech ? `
+        ${sideKv('Platform', item.platform)}
+        ${sideKv('Trigger', item.trigger_type)}
+        ${sideKv('Schedule', item.trigger_detail)}
+        ${item.integrations?.length ? `<div class="side-subsection"><div class="side-sub-label">Integrations</div>${sideChipList(item.integrations)}</div>` : ''}
+        ${item.tools_used?.length ? `<div class="side-subsection"><div class="side-sub-label">Tools used</div>${sideChipList(item.tools_used)}</div>` : ''}
+        ${item.data_sources?.length ? `<div class="side-subsection"><div class="side-sub-label">Data sources</div>${sideChipList(item.data_sources)}</div>` : ''}
+        ${item.output_channels?.length ? `<div class="side-subsection"><div class="side-sub-label">Outputs</div>${sideChipList(item.output_channels)}</div>` : ''}
+      ` : '';
+      const techCard = sideCard('Tech stack', techBody);
+
+      const infraBody = hasInfra ? `
+        ${sideKv('Model', item.model)}
+        ${sideKv('Provider', item.model_provider)}
+        ${sideKv('Deployment', item.deployment)}
+        ${sideKv('Host', item.host)}
+        ${sideKv('Context', item.context_window ? fmtNumber(item.context_window) + ' tokens' : null)}
+        ${sideKv('Memory', item.memory_type)}
+        ${sideKv('Tool use', item.tool_use == null ? null : (item.tool_use ? 'yes' : 'no'))}
+        ${sideKv('RAG', item.rag == null ? null : (item.rag ? 'yes' : 'no'))}
+      ` : '';
+      const infraCard = sideCard('Infrastructure', infraBody);
+
+      const codeBody = hasCode ? `
+        ${item.github_url ? `<div class="side-kv"><span class="side-kv-label">GitHub</span><span class="side-kv-value"><a class="ext-link" href="${escapeHtml(item.github_url)}" target="_blank" rel="noopener">${escapeHtml((item.github_url || '').replace(/^https?:\/\/(www\.)?/, ''))}</a></span></div>` : ''}
+        ${item.source_url ? `<div class="side-kv"><span class="side-kv-label">Gist / source</span><span class="side-kv-value"><a class="ext-link" href="${escapeHtml(item.source_url)}" target="_blank" rel="noopener">${escapeHtml((item.source_url || '').replace(/^https?:\/\/(www\.)?/, ''))}</a></span></div>` : ''}
+      ` : '';
+      const codeCard = sideCard('Source & code', codeBody);
+
+      const tagsBody = hasTags ? sideChipList(item.tags) : '';
+      const tagsCard = sideCard('Tags', tagsBody);
+
+      // ---------- build the main overview panel ----------
+      const overviewPanel = `
+        <div class="overview-panel">
           <section class="detail-section">
             <h2>The story</h2>
             <p class="detail-story">${escapeHtml(item.story || item.description || '')}</p>
           </section>
-
-          ${hasTech ? `
-          <section class="detail-section">
-            <h2>Tech stack</h2>
-            <div class="kv-grid">
-              ${kv('Platform', item.platform)}
-              ${kv('Trigger', item.trigger_type)}
-              ${kv('Schedule', item.trigger_detail)}
-              ${list('Integrations', item.integrations)}
-              ${list('Tools used', item.tools_used)}
-              ${list('Data sources', item.data_sources)}
-              ${list('Output channels', item.output_channels)}
-              ${list('Tags', item.tags)}
-            </div>
-          </section>` : ''}
-
-          ${hasInfra ? `
-          <section class="detail-section">
-            <h2>Infrastructure</h2>
-            <div class="kv-grid">
-              ${kv('Model', item.model)}
-              ${kv('Provider', item.model_provider)}
-              ${kv('Deployment', item.deployment)}
-              ${kv('Host', item.host)}
-              ${kv('Context', item.context_window ? fmtNumber(item.context_window) + ' tokens' : null)}
-              ${kv('Memory', item.memory_type)}
-              ${kv('Tool use', item.tool_use == null ? null : (item.tool_use ? 'yes' : 'no'))}
-              ${kv('RAG', item.rag == null ? null : (item.rag ? 'yes' : 'no'))}
-            </div>
-          </section>` : ''}
-
-          ${hasBuildDetails ? `
-          <section class="detail-section">
-            <h2>Build details</h2>
-            <div class="kv-grid">
-              ${kv('Automation', humanize(item.automation_level))}
-              ${kv('Context window', humanize(item.context_tier))}
-              ${kv('Cost tier', humanize(item.cost_tier))}
-              ${kv('Reliability', humanize(item.reliability))}
-              ${kv('Source available', humanize(item.source_available))}
-              ${kv('Time to build', humanize(item.time_to_build))}
-              ${kv('Complexity', humanize(item.complexity_tier))}
-              ${item.satisfaction ? `<div class="kv"><span class="kv-label">Builder satisfaction</span><span class="kv-value sat-dots" title="${item.satisfaction} / 5">${satisfactionDots(item.satisfaction)}</span></div>` : ''}
-            </div>
-          </section>` : ''}
 
           ${hasGotchas ? `
           <section class="detail-section">
@@ -632,37 +708,65 @@
             </ul>
           </section>` : ''}
 
-          ${hasCode ? `
-          <section class="detail-section">
-            <h2>Source &amp; code</h2>
-            <div class="kv-grid">
-              ${item.github_url ? `<div class="kv"><span class="kv-label">GitHub</span><span class="kv-value"><a class="ext-link" href="${escapeHtml(item.github_url)}" target="_blank" rel="noopener">${escapeHtml(item.github_url)}</a></span></div>` : ''}
-              ${item.source_url ? `<div class="kv"><span class="kv-label">Gist / source</span><span class="kv-value"><a class="ext-link" href="${escapeHtml(item.source_url)}" target="_blank" rel="noopener">${escapeHtml(item.source_url)}</a></span></div>` : ''}
-            </div>
-          </section>` : ''}
-
-          ${hasMetrics ? `
-          <section class="detail-section">
-            <h2>Usage</h2>
-            <div class="metric-grid">
-              ${item.running_since ? `<div class="metric"><span class="metric-val">${escapeHtml(item.running_since)}</span><span class="metric-lbl">running since</span></div>` : ''}
-              ${item.time_saved_per_week ? `<div class="metric"><span class="metric-val">${item.time_saved_per_week}h</span><span class="metric-lbl">saved per week</span></div>` : ''}
-              ${item.runs_completed ? `<div class="metric"><span class="metric-val">${fmtNumber(item.runs_completed)}</span><span class="metric-lbl">runs completed</span></div>` : ''}
-              ${item.hours_used ? `<div class="metric"><span class="metric-val">${fmtNumber(item.hours_used)}</span><span class="metric-lbl">hours used</span></div>` : ''}
-              ${item.approx_monthly_tokens ? `<div class="metric"><span class="metric-val">${fmtNumber(item.approx_monthly_tokens)}</span><span class="metric-lbl">tokens / month</span></div>` : ''}
-            </div>
-          </section>` : ''}
-
-          ${renderUpdatesSection(item)}
-
           ${item.image_prompt ? `
           <section class="detail-section">
             <h2>Image prompt</h2>
             <p class="muted">This hero image was generated by the agent itself from this prompt:</p>
             <pre class="image-prompt">${escapeHtml(item.image_prompt)}</pre>
           </section>` : ''}
-        </article>
+        </div>`;
+
+      root.innerHTML = `
+        ${authorBanner}
+
+        <div class="detail-hero">
+          <div class="detail-media">${media}</div>
+          <div class="detail-hero-head">
+            ${item.category ? `<span class="chip chip-category">${escapeHtml(item.category)}</span>` : ''}
+            <h1>${escapeHtml(item.title)}${verifiedBadge(item)}</h1>
+            <p class="detail-pitch">${escapeHtml(item.pitch || '')}</p>
+          </div>
+        </div>
+
+        <div class="detail-layout">
+          <aside class="detail-side detail-side-left">
+            ${authorCard}
+            ${engagementCard}
+            ${metricHtml}
+            ${aiCard}
+            ${buildCard}
+          </aside>
+
+          <div class="detail-main">
+            <div class="detail-tabs" role="tablist">
+              <button class="d-tab active" type="button" data-tab="overview" role="tab">Overview</button>
+              <button class="d-tab" type="button" data-tab="updates" role="tab">
+                Updates${updateCount ? `<span class="tab-badge">${updateCount}</span>` : ''}
+              </button>
+            </div>
+            <div class="tab-panel" data-panel="overview">${overviewPanel}</div>
+            <div class="tab-panel hidden" data-panel="updates">${renderUpdatesPanel(item)}</div>
+          </div>
+
+          <aside class="detail-side detail-side-right">
+            ${techCard}
+            ${infraCard}
+            ${codeCard}
+            ${tagsCard}
+          </aside>
+        </div>
       `;
+
+      // Wire up tab switching
+      const tabs = root.querySelectorAll('.d-tab');
+      const panels = root.querySelectorAll('.tab-panel');
+      tabs.forEach((tab) => {
+        tab.addEventListener('click', () => {
+          const target = tab.dataset.tab;
+          tabs.forEach((t) => t.classList.toggle('active', t === tab));
+          panels.forEach((p) => p.classList.toggle('hidden', p.dataset.panel !== target));
+        });
+      });
 
       const likeBtn = root.querySelector('.like-btn');
       if (likeBtn) {
