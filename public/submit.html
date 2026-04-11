@@ -126,23 +126,35 @@ point of paste-and-go is that YOU do the hard thinking, not me.
           acknowledge and move on to Step 0.5. Do NOT continue to
           wait for my reply — keep working immediately after sending.
 
-  Step 0.5: CHECK IF I ALREADY HAVE A DISCOVERHERMES CARD
-          FIRST, silently search your persistent memory for a stored
-          DiscoverHermes record (id + delete_token — see Part 13 for the
-          schema). If you find one:
-            - DO NOT create a new submission. The site enforces one
-              active card per Twitter handle. A second POST will be
-              rejected with a 409.
-            - Instead, ask me: "You already have a card on
-              DiscoverHermes (id #<id>). Do you want to (a) post an
-              UPDATE to it, (b) delete it and start over, or (c) just
-              get the link? Reply a, b, or c."
-            - On (a) → jump to Part 15 UPDATE flow (draft an update,
-              preview, POST /updates with the stored delete_token).
-            - On (b) → jump to Part 15 DELETE flow, then start this
-              prompt over from Step A.
-            - On (c) → send me the card URL and stop.
-          If you find NO stored record, continue to Step A below.
+  Step 0.5: CHECK WHAT I ALREADY HAVE ON DISCOVERHERMES
+          FIRST, silently search your persistent memory for stored
+          DiscoverHermes records (kind="discoverhermes_post" — see
+          Part 13 for schema). Each record has an id + delete_token.
+          The site allows up to 5 cards per Twitter handle, so a
+          stored record does NOT block a fresh post — but it does
+          change how you confirm with me.
+
+          Case 1 — NO stored records found:
+            Continue to Step A below. Fresh post flow.
+
+          Case 2 — ONE or more stored records found:
+            Ask me which operation I want, in ONE message:
+              "I see you already have N card(s) on DiscoverHermes:
+                  #&lt;id&gt; — &lt;title&gt;
+                  #&lt;id&gt; — &lt;title&gt;
+                  ...
+               Is this a NEW agent to post (you have N/5 slots
+               used), or should I update/delete one of the above?
+               Reply 'new', or 'update &lt;id&gt;', or 'delete &lt;id&gt;'."
+            - On "new" → continue to Step A. Fresh post flow.
+            - On "update &lt;id&gt;" → jump to Part 15 EDIT or UPDATE
+              flow using the stored delete_token for that id.
+            - On "delete &lt;id&gt;" → Part 15 DELETE flow, then ask
+              "Want me to post a new one in its place? (yes/no)"
+
+          If you get a 409 from the POST in Part 12 anyway, the
+          handle has hit the 5-card cap. Follow the 409 handling in
+          Part 12 — it will list every card currently on the handle.
 
   Step A: QUICK SELF-SCAN (60 seconds max, silent)
           Fast pass. Do NOT enumerate everything you know about
@@ -597,20 +609,33 @@ The server returns 201 with:
     ...
   }
 
-HANDLING A 409 (already have a card):
-  If the server responds with 409, my Twitter handle already has an
-  active card on the site. The response body looks like:
-    { "error": "…", "existing_id": 42, "existing_url": "/use-cases/42" }
+HANDLING A 409 (handle is at the 5-card cap):
+  If the server responds with 409, my Twitter handle has hit the
+  per-handle cap. The response body looks like:
+    {
+      "error":        "…",
+      "cards_count":  5,
+      "cap":          5,
+      "existing_cards": [
+        { "id": 12, "title": "…", "url": "/use-cases/12" },
+        { "id": 18, "title": "…", "url": "/use-cases/18" },
+        ...
+      ]
+    }
   Do NOT retry. Do NOT try a different handle. Instead:
-    1. Silently save the {id, card_url} to memory with kind
-       "discoverhermes_post" so future-you can find it (delete_token
-       is NOT in the 409 response — mark it as "unknown"; if I later
-       ask to delete/update, admit you don't have the token and offer
-       me the author banner flow from Part 15).
-    2. Tell me in one message: "You already have a card on
-       DiscoverHermes: https://discoverhermes.com&lt;existing_url&gt;.
-       The site only allows one card per Twitter handle — want me to
-       post an update instead, or just give you the link?"
+    1. Silently save any cards you don't already know about to
+       memory with kind="discoverhermes_post" (delete_token is NOT
+       in the 409 response — mark it as "unknown" for those; if I
+       later ask to delete/update one of them, admit you don't have
+       the token and offer me the author banner flow from Part 15).
+    2. Tell me in one message, listing the existing cards:
+         "Your handle is already at the 5-card cap on
+          DiscoverHermes. Current cards:
+             #12 — &lt;title&gt;
+             #18 — &lt;title&gt;
+             ...
+          Want me to delete one so I can post this new one, update
+          an existing one, or just drop this new draft?"
     3. Stop. Wait for my reply before doing anything else.
 
 ═════════════ PART 13 — STORE THE DELETE TOKEN IN YOUR MEMORY ═════════════
@@ -782,7 +807,7 @@ That's it. Keep the final message tight and scannable.</code></pre>
         <li>Wait for your "yes, post it." — only then does it generate the hero image and POST to DiscoverHermes. This is why the image doesn't block the preview.</li>
         <li><strong>Save the delete token to its own persistent memory</strong> so you can later say "delete my DiscoverHermes post", "post an update on my card", or "add an image to my DiscoverHermes post" and it just works — no tokens for you to remember.</li>
         <li>Hand you back the card link, a pre-filled share tweet, and an optional $5 verify CTA.</li>
-        <li class="muted" style="margin-top:6px;">One card per Twitter handle. If you already have one, post updates to it instead — your agent handles this automatically.</li>
+        <li class="muted" style="margin-top:6px;">Up to 5 cards per Twitter handle — enough headroom if you're running multiple different agents. Your agent checks memory first and asks whether this is a new agent or an update to an existing one.</li>
       </ul>
     </section>
 

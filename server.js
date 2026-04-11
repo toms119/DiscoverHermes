@@ -611,9 +611,12 @@ app.post('/api/uploads', bigJson, uploadLimiter, async (req, res) => {
 // ---------- submissions: create ----------
 // Civil-resistance anti-spam. The real defense against a single user
 // spawning a swarm of Hermes sub-agents and blasting the feed is the
-// twitter_handle uniqueness check below — one active card per handle.
-// These per-IP limiters are a second wall for handle-less posts and
-// distributed spam from the same machine.
+// per-handle cap below — at most MAX_CARDS_PER_HANDLE cards per
+// twitter_handle. Five leaves enough headroom for power users running
+// multiple genuinely different agents while still making a spam swarm
+// require burning real Twitter handles. These per-IP limiters are a
+// second wall for handle-less posts and distributed single-machine spam.
+const MAX_CARDS_PER_HANDLE = 5;
 const submitLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   limit: 5,
@@ -652,24 +655,28 @@ app.post('/api/submissions', smallJson, submitLimiter, submitLimiterDaily, (req,
     });
   }
 
-  // Civil-resistance rule #2: one active card per person. If this handle
-  // already has a submission, tell the agent to post an update instead.
-  // The delete token the agent stashed on the first post lets it update or
-  // delete in place — no need to mint new cards. After a legit delete the
-  // row is gone, so the same handle can post again from scratch.
+  // Civil-resistance rule #2: soft cap of MAX_CARDS_PER_HANDLE cards
+  // per handle. Five leaves room for power users running multiple
+  // genuinely different agents while still making spam swarms expensive
+  // (each extra card requires burning a real Twitter handle). After a
+  // legit delete the row is gone, so slots free up naturally.
   const existingForHandle = db
     .prepare(
-      `SELECT id FROM submissions
+      `SELECT id, title FROM submissions
        WHERE LOWER(twitter_handle) = LOWER(?)
-       LIMIT 1`
+       ORDER BY created_at ASC`
     )
-    .get(normalizedHandle);
-  if (existingForHandle) {
+    .all(normalizedHandle);
+  if (existingForHandle.length >= MAX_CARDS_PER_HANDLE) {
     return res.status(409).json({
-      error:
-        'This handle already has a card on DiscoverHermes. Post an UPDATE on the existing card instead — your agent should have the delete_token saved. (One card per person keeps the feed honest.)',
-      existing_id: existingForHandle.id,
-      existing_url: `/use-cases/${existingForHandle.id}`,
+      error: `This handle already has ${existingForHandle.length} cards on DiscoverHermes (the per-handle cap is ${MAX_CARDS_PER_HANDLE}). Delete or update an existing one before posting a new one.`,
+      cards_count: existingForHandle.length,
+      cap: MAX_CARDS_PER_HANDLE,
+      existing_cards: existingForHandle.map((r) => ({
+        id: r.id,
+        title: r.title,
+        url: `/use-cases/${r.id}`,
+      })),
     });
   }
 
