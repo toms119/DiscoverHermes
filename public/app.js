@@ -269,6 +269,7 @@
       return;
     }
     const id = Number(m[1]);
+    const deleteToken = new URLSearchParams(location.search).get('delete') || '';
 
     function kv(label, value) {
       if (!value && value !== 0) return '';
@@ -303,8 +304,16 @@
         item.running_since || item.time_saved_per_week || item.runs_completed ||
         item.hours_used || item.approx_monthly_tokens;
 
+      const deleteBanner = deleteToken
+        ? `<div class="delete-banner">
+             <span>You have a delete token for this post.</span>
+             <button class="delete-btn" type="button">Delete this post</button>
+           </div>`
+        : '';
+
       root.innerHTML = `
         <article class="detail-article">
+          ${deleteBanner}
           <div class="detail-media">${media}</div>
 
           <header class="detail-head">
@@ -456,19 +465,19 @@
       });
     }
 
-    function lineChart(canvas, rows) {
+    function lineChart(canvas, rows, label) {
       return new Chart(canvas, {
         type: 'line',
         data: {
           labels: rows.map((r) => r.label),
           datasets: [{
-            label: 'agents posted',
+            label: label || 'agents',
             data: rows.map((r) => r.count),
             borderColor: '#ff7a59',
             backgroundColor: 'rgba(255,122,89,0.15)',
             fill: true,
             tension: 0.3,
-            pointRadius: 3,
+            pointRadius: 2,
           }],
         },
         options: {
@@ -484,7 +493,8 @@
     }
 
     const donutKeys = new Set(['by_deployment', 'by_trigger', 'by_memory', 'tool_use', 'rag']);
-    const horizontalKeys = new Set(['by_integration', 'by_tool', 'by_model', 'by_host']);
+    const horizontalKeys = new Set(['by_integration', 'by_tool', 'by_skill', 'by_plugin', 'by_model', 'by_host']);
+    const lineKeys = new Set(['daily', 'cumulative']);
 
     loadHeadline().then((data) => {
       if (!data) return;
@@ -495,7 +505,7 @@
           canvas.outerHTML = '<div class="empty-chart">no data yet</div>';
           return;
         }
-        if (key === 'daily') lineChart(canvas, rows);
+        if (lineKeys.has(key)) lineChart(canvas, rows, key === 'cumulative' ? 'total agents' : 'new agents');
         else if (donutKeys.has(key)) donutChart(canvas, rows);
         else barChart(canvas, rows, horizontalKeys.has(key));
       });

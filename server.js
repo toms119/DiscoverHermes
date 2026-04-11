@@ -10,6 +10,7 @@ const crypto = require('crypto');
 const express = require('express');
 const rateLimit = require('express-rate-limit');
 const Database = require('better-sqlite3');
+const sharp = require('sharp');
 
 const PORT = process.env.PORT || 3000;
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || null;
@@ -44,6 +45,7 @@ const CATEGORY_SET = new Set(CATEGORIES);
 const DEPLOYMENTS = new Set(['cloud', 'local', 'hybrid']);
 const TRIGGERS = new Set(['scheduled', 'event', 'on-demand', 'webhook', 'continuous']);
 const MEMORY_TYPES = new Set(['none', 'session', 'persistent', 'vector']);
+const COMPLEXITY_TIERS = new Set(['beginner', 'intermediate', 'advanced', 'expert']);
 
 // ---------- safety scanner ----------
 // Hard-block patterns that look like credentials. We err on the side of
@@ -99,8 +101,10 @@ const DESIRED_COLUMNS = {
   story:                 'TEXT',
   category:              'TEXT',
   tags:                  'TEXT',          // JSON array
-  integrations:          'TEXT',          // JSON array
-  tools_used:            'TEXT',          // JSON array
+  integrations:          'TEXT',          // JSON array  — external services
+  tools_used:            'TEXT',          // JSON array  — runtime tool primitives
+  skills:                'TEXT',          // JSON array  — named skill modules
+  plugins:               'TEXT',          // JSON array  — installable extensions
   data_sources:          'TEXT',          // JSON array
   output_channels:       'TEXT',          // JSON array
   trigger_type:          'TEXT',
@@ -119,9 +123,17 @@ const DESIRED_COLUMNS = {
   runs_completed:        'INTEGER',
   hours_used:            'INTEGER',
   approx_monthly_tokens: 'INTEGER',
+  tokens_total:          'INTEGER',       // cumulative lifetime tokens; agents can PATCH this
+  last_updated_at:       'TEXT',          // set whenever a PATCH lands
+  complexity_tier:       'TEXT',          // beginner | intermediate | advanced | expert
+  gotchas:               'TEXT',          // JSON array of short bullets
+  time_to_build:         'TEXT',          // free-form: "2 hours", "a weekend"
+  satisfaction:          'INTEGER',       // 1..5
+  source_url:            'TEXT',          // link to a public gist/pastebin
   image_prompt:          'TEXT',
   display_name:          'TEXT',
   website:               'TEXT',
+  delete_token_hash:     'TEXT',          // SHA-256 of the plaintext delete token
 };
 const existingCols = new Set(
   db.prepare(`PRAGMA table_info(submissions)`).all().map((c) => c.name)
@@ -200,12 +212,14 @@ function parseJson(str, fallback = null) {
 }
 
 // Hydrate a DB row: parse JSON-array columns so the client can render them.
+// Never leaks the delete token hash.
 function hydrate(row) {
   if (!row) return row;
-  const jsonCols = ['tags', 'integrations', 'tools_used', 'data_sources', 'output_channels'];
+  const jsonCols = ['tags', 'integrations', 'tools_used', 'skills', 'plugins', 'data_sources', 'output_channels', 'gotchas'];
   for (const c of jsonCols) row[c] = parseJson(row[c], []);
   row.tool_use = row.tool_use == null ? null : !!row.tool_use;
   row.rag = row.rag == null ? null : !!row.rag;
+  delete row.delete_token_hash;
   return row;
 }
 
@@ -229,21 +243,43 @@ app.use('/u', express.static(UPLOADS_DIR, { maxAge: '30d', immutable: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ---------- uploads ----------
+// Images are aggressively compressed to WebP on upload. A 5MB PNG from
+// an agent's image model typically lands at ~100KB on disk — which is
+// the whole reason storage scales gracefully. Videos are passed through
+// as-is (we don't ship ffmpeg).
 const uploadLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 30 });
 const ALLOWED_MIME = {
-  'image/png':  'png',
-  'image/jpeg': 'jpg',
-  'image/webp': 'webp',
-  'video/mp4':  'mp4',
+  'image/png':  { kind: 'image', ext: 'webp' },   // recompressed to webp
+  'image/jpeg': { kind: 'image', ext: 'webp' },
+  'image/webp': { kind: 'image', ext: 'webp' },
+  'video/mp4':  { kind: 'video', ext: 'mp4'  },
 };
 
-app.post('/api/uploads', bigJson, uploadLimiter, (req, res) => {
+const MAX_IMAGE_DIM = 1600;     // longest side, px
+const WEBP_QUALITY  = 82;
+
+async function compressImage(buf) {
+  // .rotate() applies EXIF orientation then the output strips all EXIF
+  // (sharp strips metadata by default unless .withMetadata() is called).
+  return sharp(buf, { failOn: 'error' })
+    .rotate()
+    .resize({
+      width:  MAX_IMAGE_DIM,
+      height: MAX_IMAGE_DIM,
+      fit:    'inside',
+      withoutEnlargement: true,
+    })
+    .webp({ quality: WEBP_QUALITY })
+    .toBuffer();
+}
+
+app.post('/api/uploads', bigJson, uploadLimiter, async (req, res) => {
   const { data, mime } = req.body || {};
   if (typeof data !== 'string' || !data) {
     return res.status(400).json({ error: 'data (base64) required' });
   }
-  const ext = ALLOWED_MIME[mime];
-  if (!ext) {
+  const type = ALLOWED_MIME[mime];
+  if (!type) {
     return res.status(400).json({ error: `mime not allowed (use: ${Object.keys(ALLOWED_MIME).join(', ')})` });
   }
   let buf;
@@ -255,12 +291,28 @@ app.post('/api/uploads', bigJson, uploadLimiter, (req, res) => {
   if (buf.length === 0) return res.status(400).json({ error: 'empty payload' });
   if (buf.length > 5 * 1024 * 1024) return res.status(413).json({ error: 'max 5MB' });
 
-  const hash = crypto.createHash('sha256').update(buf).digest('hex').slice(0, 24);
-  const filename = `${hash}.${ext}`;
-  const fp = path.join(UPLOADS_DIR, filename);
-  if (!fs.existsSync(fp)) fs.writeFileSync(fp, buf);
+  let output;
+  if (type.kind === 'image') {
+    try {
+      output = await compressImage(buf);
+    } catch {
+      return res.status(400).json({ error: 'could not decode image' });
+    }
+  } else {
+    output = buf;
+  }
 
-  res.status(201).json({ url: `/u/${filename}` });
+  // Hash the compressed output so identical-after-resize images dedupe.
+  const hash = crypto.createHash('sha256').update(output).digest('hex').slice(0, 24);
+  const filename = `${hash}.${type.ext}`;
+  const fp = path.join(UPLOADS_DIR, filename);
+  if (!fs.existsSync(fp)) fs.writeFileSync(fp, output);
+
+  res.status(201).json({
+    url: `/u/${filename}`,
+    bytes: output.length,
+    original_bytes: buf.length,
+  });
 });
 
 // ---------- submissions: create ----------
@@ -291,6 +343,8 @@ app.post('/api/submissions', smallJson, submitLimiter, (req, res) => {
     ...(Array.isArray(b.tags) ? b.tags : []),
     ...(Array.isArray(b.integrations) ? b.integrations : []),
     ...(Array.isArray(b.tools_used) ? b.tools_used : []),
+    ...(Array.isArray(b.skills) ? b.skills : []),
+    ...(Array.isArray(b.plugins) ? b.plugins : []),
     ...(Array.isArray(b.data_sources) ? b.data_sources : []),
     ...(Array.isArray(b.output_channels) ? b.output_channels : []),
   ];
@@ -315,6 +369,12 @@ app.post('/api/submissions', smallJson, submitLimiter, (req, res) => {
   const deployment  = DEPLOYMENTS.has(b.deployment) ? b.deployment : null;
   const triggerType = TRIGGERS.has(b.trigger_type) ? b.trigger_type : null;
   const memoryType  = MEMORY_TYPES.has(b.memory_type) ? b.memory_type : null;
+  const complexityTier = COMPLEXITY_TIERS.has(b.complexity_tier) ? b.complexity_tier : null;
+  const satisfaction = cleanInt(b.satisfaction, 5) || null;
+  const sourceUrl = clean(b.source_url, 500);
+  if (sourceUrl && !isHttpUrl(sourceUrl)) {
+    return res.status(400).json({ error: 'source_url must be an http(s) URL' });
+  }
 
   const row = {
     title,
@@ -325,6 +385,8 @@ app.post('/api/submissions', smallJson, submitLimiter, (req, res) => {
     tags:            JSON.stringify(cleanArray(b.tags, 5, 32) || []),
     integrations:    JSON.stringify(cleanArray(b.integrations, 20, 60) || []),
     tools_used:      JSON.stringify(cleanArray(b.tools_used, 20, 60) || []),
+    skills:          JSON.stringify(cleanArray(b.skills, 20, 60) || []),
+    plugins:         JSON.stringify(cleanArray(b.plugins, 20, 60) || []),
     data_sources:    JSON.stringify(cleanArray(b.data_sources, 20, 120) || []),
     output_channels: JSON.stringify(cleanArray(b.output_channels, 10, 60) || []),
     trigger_type:    triggerType,
@@ -343,6 +405,12 @@ app.post('/api/submissions', smallJson, submitLimiter, (req, res) => {
     runs_completed:        cleanInt(b.runs_completed, 1_000_000_000),
     hours_used:            cleanInt(b.hours_used, 1_000_000),
     approx_monthly_tokens: cleanInt(b.approx_monthly_tokens, 1_000_000_000_000),
+    tokens_total:          cleanInt(b.tokens_total, 1_000_000_000_000_000),
+    complexity_tier: complexityTier,
+    gotchas:         JSON.stringify(cleanArray(b.gotchas, 5, 240) || []),
+    time_to_build:   clean(b.time_to_build, 60),
+    satisfaction,
+    source_url:      sourceUrl,
     image_url:     imageUrl,
     video_url:     videoUrl,
     image_prompt:  clean(b.image_prompt, 600),
@@ -352,6 +420,11 @@ app.post('/api/submissions', smallJson, submitLimiter, (req, res) => {
   };
   if (row.website && !isHttpUrl(row.website)) row.website = null;
 
+  // Issue a one-time delete token. The plaintext is ONLY returned in this
+  // response — from then on the server only stores the hash.
+  const deleteToken = crypto.randomBytes(18).toString('hex');
+  row.delete_token_hash = crypto.createHash('sha256').update(deleteToken).digest('hex');
+
   const cols = Object.keys(row);
   const placeholders = cols.map(() => '?').join(', ');
   const info = db
@@ -359,7 +432,32 @@ app.post('/api/submissions', smallJson, submitLimiter, (req, res) => {
     .run(...cols.map((k) => row[k]));
 
   const inserted = db.prepare('SELECT * FROM submissions WHERE id = ?').get(info.lastInsertRowid);
-  res.status(201).json(hydrate(inserted));
+  const hydrated = hydrate(inserted);
+  // Return the plaintext delete token + a ready-to-share delete link.
+  hydrated.delete_token = deleteToken;
+  hydrated.delete_url = `/use-cases/${inserted.id}?delete=${deleteToken}`;
+  res.status(201).json(hydrated);
+});
+
+// Delete your own submission with the token you got on creation.
+// Accepts the token in a ?token= query param OR an x-delete-token header.
+app.delete('/api/submissions/:id', (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return res.status(400).json({ error: 'invalid id' });
+  const token = req.query.token || req.get('x-delete-token');
+  if (!token || typeof token !== 'string') {
+    return res.status(401).json({ error: 'delete token required' });
+  }
+  const row = db.prepare('SELECT delete_token_hash FROM submissions WHERE id = ?').get(id);
+  if (!row) return res.status(404).json({ error: 'not found' });
+  const expected = row.delete_token_hash;
+  const provided = crypto.createHash('sha256').update(token).digest('hex');
+  // Constant-time compare via crypto.timingSafeEqual (same length guaranteed).
+  if (!expected || !crypto.timingSafeEqual(Buffer.from(expected, 'hex'), Buffer.from(provided, 'hex'))) {
+    return res.status(403).json({ error: 'invalid delete token' });
+  }
+  db.prepare('DELETE FROM submissions WHERE id = ?').run(id);
+  res.json({ ok: true, deleted: id });
 });
 
 // ---------- submissions: list with filters ----------
@@ -478,6 +576,8 @@ app.get('/api/stats', (_req, res) => {
     total_likes:        one(`SELECT COALESCE(SUM(likes), 0) AS n FROM submissions WHERE approved = 1`).n,
     total_hours_saved:  one(`SELECT COALESCE(SUM(time_saved_per_week), 0) AS n FROM submissions WHERE approved = 1`).n,
     total_runs:         one(`SELECT COALESCE(SUM(runs_completed), 0) AS n FROM submissions WHERE approved = 1`).n,
+    new_this_week:      one(`SELECT COUNT(*) AS n FROM submissions
+                             WHERE approved = 1 AND created_at >= datetime('now', '-7 days')`).n,
     integrations_tracked:
       one(`SELECT COUNT(DISTINCT j.value) AS n
            FROM submissions, json_each(submissions.integrations) j
@@ -487,11 +587,20 @@ app.get('/api/stats', (_req, res) => {
            FROM submissions WHERE approved = 1 AND model IS NOT NULL AND model != ''`).n,
   };
 
-  const daily = many(
+  // Daily new submissions across ALL time — we'll slice the last 30 for
+  // the daily chart and running-sum the full series for the cumulative.
+  const dailyAll = many(
     `SELECT DATE(created_at) AS label, COUNT(*) AS count
      FROM submissions WHERE approved = 1
-     GROUP BY DATE(created_at) ORDER BY label DESC LIMIT 30`
-  ).reverse();
+     GROUP BY DATE(created_at) ORDER BY label ASC`
+  );
+  let running = 0;
+  const cumulativeAll = dailyAll.map((r) => ({
+    label: r.label,
+    count: (running += r.count),
+  }));
+  const daily      = dailyAll.slice(-30);
+  const cumulative = cumulativeAll.slice(-60); // show a 60-day growth curve
 
   res.json({
     totals,
@@ -505,9 +614,12 @@ app.get('/api/stats', (_req, res) => {
     by_memory:       groupScalar('memory_type'),
     by_integration:  groupArray('integrations'),
     by_tool:         groupArray('tools_used'),
+    by_skill:        groupArray('skills'),
+    by_plugin:       groupArray('plugins'),
     tool_use:        boolDist('tool_use'),
     rag:             boolDist('rag'),
     daily,
+    cumulative,
   });
 });
 
