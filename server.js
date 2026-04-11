@@ -165,6 +165,12 @@ const DESIRED_COLUMNS = {
   verified:              'INTEGER',       // 0/1 — flipped by Stripe webhook
   verified_at:           'TEXT',          // timestamp of payment
   stripe_session_id:     'TEXT',          // idempotency: reject duplicate webhooks
+  // AI scoring fields — populated by daily automated review
+  ai_score:              'INTEGER',       // 0-100 composite score
+  ai_grade:              'TEXT',          // S, A, B, C, D
+  featured:              'INTEGER',       // 0/1 — AI pick for homepage
+  featured_reason:       'TEXT',          // short explanation (max 200 chars)
+  last_reviewed_at:      'TEXT',          // when AI last scored this
 };
 const existingCols = new Set(
   db.prepare(`PRAGMA table_info(submissions)`).all().map((c) => c.name)
@@ -180,6 +186,8 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_submissions_model    ON submissions(model);
   CREATE INDEX IF NOT EXISTS idx_submissions_platform ON submissions(platform);
   CREATE INDEX IF NOT EXISTS idx_submissions_deploy   ON submissions(deployment);
+  CREATE INDEX IF NOT EXISTS idx_submissions_featured ON submissions(featured);
+  CREATE INDEX IF NOT EXISTS idx_submissions_ai_score ON submissions(ai_score DESC);
 `);
 
 // ---------- daily totals snapshot ----------
@@ -373,6 +381,7 @@ function hydrate(row) {
   row.tool_use = row.tool_use == null ? null : !!row.tool_use;
   row.rag = row.rag == null ? null : !!row.rag;
   row.verified = !!row.verified;
+  row.featured = !!row.featured;
   delete row.delete_token_hash;
   delete row.stripe_session_id;
   return row;
@@ -1126,12 +1135,104 @@ app.delete('/api/admin/submissions/:id', requireAdmin, (req, res) => {
   res.json({ ok: true });
 });
 
+// ---------- AI scoring endpoints ----------
+// PATCH /api/submissions/:id/score — update AI score fields
+// Uses delete token OR admin token for authorization
+app.patch('/api/submissions/:id/score', smallJson, (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return res.status(400).json({ error: 'invalid id' });
+  
+  // Auth: delete token OR admin token
+  const deleteToken = req.query.token || req.get('x-delete-token');
+  const adminToken = req.get('x-admin-token');
+  
+  const authorizedByDelete = deleteToken && verifyDeleteToken(id, deleteToken);
+  const authorizedByAdmin = adminToken && adminToken === ADMIN_TOKEN;
+  
+  if (!authorizedByDelete && !authorizedByAdmin) {
+    return res.status(401).json({ error: 'valid delete token or admin token required' });
+  }
+  
+  const b = req.body || {};
+  const now = new Date().toISOString();
+  
+  // Validate score range
+  const aiScore = b.ai_score != null ? cleanInt(b.ai_score, 100) : null;
+  const aiGrade = typeof b.ai_grade === 'string' && ['S','A','B','C','D'].includes(b.ai_grade) ? b.ai_grade : null;
+  const featured = cleanBool(b.featured);
+  const featuredReason = clean(b.featured_reason, 200);
+  
+  if (aiScore == null) {
+    return res.status(400).json({ error: 'ai_score is required (0-100)' });
+  }
+  
+  db.prepare(`
+    UPDATE submissions 
+    SET ai_score = ?, ai_grade = ?, featured = ?, featured_reason = ?, last_reviewed_at = ?
+    WHERE id = ?
+  `).run(aiScore, aiGrade, featured, featuredReason, now, id);
+  
+  const row = db.prepare('SELECT * FROM submissions WHERE id = ?').get(id);
+  res.json(hydrate(row));
+});
+
+// GET /api/submissions/unscored — submissions that need AI review
+app.get('/api/submissions/unscored', requireAdmin, (req, res) => {
+  const olderThan = req.query.older_than; // ISO date
+  const limit = Math.min(Number(req.query.limit) || 50, 100);
+  
+  let sql = `SELECT * FROM submissions WHERE approved = 1 AND (ai_score IS NULL`;
+  const params = [];
+  
+  if (olderThan) {
+    sql += ` OR last_reviewed_at < ?`;
+    params.push(olderThan);
+  }
+  sql += `) ORDER BY created_at DESC LIMIT ?`;
+  params.push(limit);
+  
+  const rows = db.prepare(sql).all(...params);
+  res.json(rows.map(hydrate));
+});
+
+// GET /api/rankings — top scored submissions
+app.get('/api/rankings', (req, res) => {
+  const limit = Math.min(Number(req.query.limit) || 20, 100);
+  const minScore = Number(req.query.min_score) || 0;
+  
+  const rows = db.prepare(`
+    SELECT * FROM submissions 
+    WHERE approved = 1 AND ai_score IS NOT NULL AND ai_score >= ?
+    ORDER BY ai_score DESC, created_at DESC
+    LIMIT ?
+  `).all(minScore, limit);
+  
+  res.json(rows.map(hydrate));
+});
+
+// GET /api/featured — submissions featured by AI
+app.get('/api/featured', (req, res) => {
+  const limit = Math.min(Number(req.query.limit) || 10, 50);
+  
+  const rows = db.prepare(`
+    SELECT * FROM submissions 
+    WHERE approved = 1 AND featured = 1
+    ORDER BY last_reviewed_at DESC
+    LIMIT ?
+  `).all(limit);
+  
+  res.json(rows.map(hydrate));
+});
+
 // ---------- page routes ----------
 app.get('/submit', (_req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'submit.html'));
 });
 app.get('/stats', (_req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'stats.html'));
+});
+app.get('/rankings', (_req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'rankings.html'));
 });
 app.get('/use-cases/:id', (_req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'use-case.html'));

@@ -373,6 +373,40 @@
     loadHeadline();
     loadFeed();
     startLivePoll();
+    loadFeatured();
+  }
+
+  // ==========================================================
+  // FEATURED SECTION (feed page)
+  // ==========================================================
+  async function loadFeatured() {
+    const featuredEl = document.getElementById('featured');
+    const gridEl = document.getElementById('featured-grid');
+    if (!featuredEl || !gridEl) return;
+    
+    try {
+      const res = await fetch('/api/featured?limit=4');
+      const items = await res.json();
+      if (!Array.isArray(items) || items.length === 0) {
+        featuredEl.style.display = 'none';
+        return;
+      }
+      
+      featuredEl.style.display = 'block';
+      gridEl.innerHTML = items.map((item) => `
+        <a class="featured-card" href="/use-cases/${item.id}">
+          ${item.image_url 
+            ? `<img src="${escapeHtml(item.image_url)}" alt="" loading="lazy" referrerpolicy="no-referrer" />`
+            : `<div class="featured-placeholder">◆</div>`}
+          <div class="featured-body">
+            <h3>${escapeHtml(item.title)}</h3>
+            <p class="featured-reason">${escapeHtml(item.featured_reason || '')}</p>
+          </div>
+        </a>
+      `).join('');
+    } catch {
+      featuredEl.style.display = 'none';
+    }
   }
 
   // ==========================================================

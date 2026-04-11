@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Rankings — DiscoverHermes</title>
+  <meta name="description" content="Top-rated agents ranked by AI score on DiscoverHermes." />
+  <link rel="stylesheet" href="/styles.css" />
+  <style>
+    .rankings-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 24px;
+    }
+    .rankings-table th,
+    .rankings-table td {
+      padding: 14px 16px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+    .rankings-table th {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-dim);
+      font-weight: 600;
+    }
+    .rankings-table tbody tr:hover {
+      background: var(--bg-elev);
+    }
+    .rank-row {
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--text-dim);
+      width: 50px;
+    }
+    .rank-top-3 .rank-row { color: var(--accent-2); }
+    .rank-title {
+      font-weight: 600;
+      color: var(--text);
+    }
+    .rank-title:hover { color: var(--accent); }
+    .rank-score {
+      font-weight: 700;
+      font-size: 20px;
+    }
+    .rank-grade {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      font-weight: 700;
+      font-size: 14px;
+    }
+    .grade-S { background: linear-gradient(135deg, #ffd700, #ffaa00); color: #1a0b05; }
+    .grade-A { background: var(--accent-soft); color: var(--accent); }
+    .grade-B { background: rgba(139, 195, 74, 0.15); color: #8bc34a; }
+    .grade-C { background: rgba(255, 193, 7, 0.15); color: #ffc107; }
+    .grade-D { background: rgba(158, 158, 158, 0.15); color: #9e9e9e; }
+    .rank-meta {
+      font-size: 13px;
+      color: var(--text-dim);
+    }
+    .score-bar {
+      height: 6px;
+      background: var(--border);
+      border-radius: 3px;
+      overflow: hidden;
+      margin-top: 6px;
+      width: 80px;
+    }
+    .score-fill {
+      height: 100%;
+      background: var(--accent-2);
+      border-radius: 3px;
+    }
+  </style>
+</head>
+<body data-page="rankings">
+  <header class="site-header">
+    <a class="brand" href="/">
+      <span class="brand-mark">◆</span>
+      <span>DiscoverHermes</span>
+    </a>
+    <nav>
+      <a class="ghost" href="/rankings">Rankings</a>
+      <a class="ghost" href="/stats">Stats</a>
+      <a class="ghost" href="https://hermes-agent.nousresearch.com/" target="_blank" rel="noopener">Install Hermes</a>
+      <a class="primary" href="/submit">Showoff your agent</a>
+    </nav>
+  </header>
+
+  <section class="hero narrow">
+    <h1>Agent Rankings</h1>
+    <p>
+      Top agents ranked by AI score — a composite оценка of completeness, uniqueness, metrics, and build detail.
+    </p>
+  </section>
+
+  <main class="container narrow">
+    <table class="rankings-table" id="rankings-table">
+      <thead>
+        <tr>
+          <th>Rank</th>
+          <th>Agent</th>
+          <th>Score</th>
+          <th>Meta</th>
+        </tr>
+      </thead>
+      <tbody id="rankings-body">
+        <tr><td colspan="4" class="loading">Loading rankings…</td></tr>
+      </tbody>
+    </table>
+  </main>
+
+  <footer class="site-footer">
+    <span>Built for the Hermes community by <a href="https://x.com/Shaughnessy119" target="_blank" rel="noopener">@Shaughnessy119</a>.</span>
+    <a href="/submit">Show off what you built →</a>
+  </footer>
+
+  <script src="/app.js"></script>
+  <script>
+    (function() {
+      async function loadRankings() {
+        const tbody = document.getElementById('rankings-body');
+        if (!tbody) return;
+        
+        try {
+          const res = await fetch('/api/rankings?limit=50');
+          const items = await res.json();
+          
+          if (!Array.isArray(items) || items.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" class="empty">No scored agents yet. Check back soon!</td></tr>';
+            return;
+          }
+          
+          tbody.innerHTML = items.map((item, i) => {
+            const rank = i + 1;
+            const grade = item.ai_grade || 'C';
+            const score = item.ai_score || 0;
+            const meta = [];
+            if (item.category) meta.push(item.category);
+            if (item.platform) meta.push(item.platform);
+            if (item.display_name) meta.push('by ' + item.display_name);
+            else if (item.twitter_handle) meta.push('by @' + item.twitter_handle);
+            
+            return `
+              <tr class="${rank <= 3 ? 'rank-top-3' : ''}">
+                <td class="rank-row">${rank}</td>
+                <td>
+                  <a class="rank-title" href="/use-cases/${item.id}">${escapeHtml(item.title)}</a>
+                  <div class="chip-row" style="margin-top: 4px;">
+                    ${item.tags?.slice(0, 2).map(t => `<span class="chip">${escapeHtml(t)}</span>`).join('') || ''}
+                  </div>
+                </td>
+                <td>
+                  <div style="display: flex; align-items: center; gap: 12px;">
+                    <span class="rank-grade grade-${grade}">${grade}</span>
+                    <div>
+                      <div class="rank-score">${score}</div>
+                      <div class="score-bar"><div class="score-fill" style="width: ${score}%"></div></div>
+                    </div>
+                  </div>
+                </td>
+                <td class="rank-meta">${meta.join(' · ')}</td>
+              </tr>
+            `;
+          }).join('');
+        } catch (err) {
+          tbody.innerHTML = '<tr><td colspan="4" class="empty">Failed to load rankings. Try refreshing.</td></tr>';
+        }
+      }
+      
+      function escapeHtml(s) {
+        return String(s ?? '').replace(/[&<>"']/g, (c) => ({
+          '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        })[c]);
+      }
+      
+      loadRankings();
+    })();
+  </script>
+</body>
+</html>
