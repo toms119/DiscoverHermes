@@ -60,7 +60,23 @@ a { color: inherit; text-decoration: none; }
 .site-header nav {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+@media (max-width: 900px) {
+  .site-header {
+    flex-wrap: wrap;
+  }
+  .site-header nav {
+    width: 100%;
+    justify-content: flex-start;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    padding-bottom: 4px;
+  }
+  .site-header nav::-webkit-scrollbar { height: 3px; }
+  .site-header nav::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 }
 
 .primary, .ghost {
@@ -87,6 +103,11 @@ a { color: inherit; text-decoration: none; }
   border-color: var(--border);
 }
 .ghost:hover { border-color: var(--accent); color: var(--accent); }
+.ghost.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
 .primary.big { padding: 14px 22px; font-size: 15px; }
 
 /* ---------- hero ---------- */
