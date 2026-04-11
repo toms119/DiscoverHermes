@@ -16,6 +16,13 @@ const PORT = process.env.PORT || 3000;
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || null;
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 const UPLOADS_DIR = path.join(DATA_DIR, 'uploads');
+
+// Stripe verification is optional: if any of these are missing the whole
+// feature (button, webhook, badge) just hides. The portal still works.
+const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || null;
+const STRIPE_PAYMENT_LINK   = process.env.STRIPE_PAYMENT_LINK   || null;
+const VERIFY_PRICE_USD      = Number(process.env.VERIFY_PRICE_USD) || 5;
+const VERIFY_ENABLED        = !!(STRIPE_WEBHOOK_SECRET && STRIPE_PAYMENT_LINK);
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
@@ -134,6 +141,9 @@ const DESIRED_COLUMNS = {
   display_name:          'TEXT',
   website:               'TEXT',
   delete_token_hash:     'TEXT',          // SHA-256 of the plaintext delete token
+  verified:              'INTEGER',       // 0/1 — flipped by Stripe webhook
+  verified_at:           'TEXT',          // timestamp of payment
+  stripe_session_id:     'TEXT',          // idempotency: reject duplicate webhooks
 };
 const existingCols = new Set(
   db.prepare(`PRAGMA table_info(submissions)`).all().map((c) => c.name)
@@ -219,7 +229,9 @@ function hydrate(row) {
   for (const c of jsonCols) row[c] = parseJson(row[c], []);
   row.tool_use = row.tool_use == null ? null : !!row.tool_use;
   row.rag = row.rag == null ? null : !!row.rag;
+  row.verified = !!row.verified;
   delete row.delete_token_hash;
+  delete row.stripe_session_id;
   return row;
 }
 
@@ -236,6 +248,94 @@ app.set('trust proxy', 1);
 
 const bigJson = express.json({ limit: '8mb' });
 const smallJson = express.json({ limit: '64kb' });
+// Stripe-webhook needs the RAW request body to verify the HMAC signature.
+// Mounted before the JSON parsers so express doesn't consume the stream first.
+const rawForStripe = express.raw({ type: '*/*', limit: '1mb' });
+
+// ---------- Stripe webhook ----------
+// Verifies a Stripe `checkout.session.completed` event and flips the
+// submission's `verified` flag. No Stripe SDK — just raw HMAC-SHA256 of
+// the signed payload, constant-time compared to the header value.
+function verifyStripeSignature(rawBody, header, secret) {
+  if (!header || !secret || !rawBody) return false;
+  const pairs = header.split(',').map((s) => s.trim().split('='));
+  const t = pairs.find(([k]) => k === 't')?.[1];
+  const sigs = pairs.filter(([k]) => k === 'v1').map(([, v]) => v);
+  if (!t || sigs.length === 0) return false;
+  // 5-minute replay window.
+  const nowSec = Math.floor(Date.now() / 1000);
+  if (Math.abs(nowSec - Number(t)) > 300) return false;
+  const payload = `${t}.${rawBody.toString('utf8')}`;
+  const expected = crypto.createHmac('sha256', secret).update(payload).digest('hex');
+  const expectedBuf = Buffer.from(expected, 'hex');
+  for (const sig of sigs) {
+    try {
+      const sigBuf = Buffer.from(sig, 'hex');
+      if (sigBuf.length === expectedBuf.length &&
+          crypto.timingSafeEqual(sigBuf, expectedBuf)) {
+        return true;
+      }
+    } catch { /* malformed hex */ }
+  }
+  return false;
+}
+
+app.post('/api/stripe-webhook', rawForStripe, (req, res) => {
+  if (!VERIFY_ENABLED) return res.status(503).json({ error: 'verify disabled' });
+  const signature = req.get('stripe-signature');
+  if (!verifyStripeSignature(req.body, signature, STRIPE_WEBHOOK_SECRET)) {
+    return res.status(400).json({ error: 'invalid signature' });
+  }
+  let event;
+  try {
+    event = JSON.parse(req.body.toString('utf8'));
+  } catch {
+    return res.status(400).json({ error: 'invalid json' });
+  }
+  if (event.type !== 'checkout.session.completed') {
+    return res.json({ ok: true, ignored: event.type });
+  }
+  const session = event.data?.object || {};
+  // Only count actually-paid sessions. Stripe can fire this event with
+  // payment_status 'unpaid' for async payment methods — we ignore those.
+  if (session.payment_status !== 'paid') {
+    return res.json({ ok: true, ignored: 'unpaid' });
+  }
+  const submissionId = Number(session.client_reference_id);
+  if (!Number.isInteger(submissionId)) {
+    return res.json({ ok: true, ignored: 'no client_reference_id' });
+  }
+  // Idempotency: if we've already processed this session_id, no-op.
+  const existing = db
+    .prepare('SELECT id FROM submissions WHERE stripe_session_id = ?')
+    .get(session.id);
+  if (existing) return res.json({ ok: true, already: true });
+
+  const result = db
+    .prepare(`UPDATE submissions
+              SET verified = 1,
+                  verified_at = datetime('now'),
+                  stripe_session_id = ?
+              WHERE id = ? AND approved = 1`)
+    .run(session.id, submissionId);
+  if (result.changes === 0) {
+    return res.json({ ok: true, not_found: submissionId });
+  }
+  res.json({ ok: true, verified: submissionId });
+});
+
+// Redirect the author to Stripe Checkout with the submission ID baked in as
+// client_reference_id. Keeps the raw payment link URL out of the HTML.
+app.get('/api/verify/:id', (req, res) => {
+  if (!VERIFY_ENABLED) return res.status(503).send('Verification not configured.');
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return res.status(400).send('invalid id');
+  const row = db.prepare('SELECT id, verified FROM submissions WHERE id = ? AND approved = 1').get(id);
+  if (!row) return res.status(404).send('not found');
+  if (row.verified) return res.redirect(`/use-cases/${id}`);
+  const sep = STRIPE_PAYMENT_LINK.includes('?') ? '&' : '?';
+  res.redirect(302, `${STRIPE_PAYMENT_LINK}${sep}client_reference_id=${id}`);
+});
 
 // Serve user-uploaded images from the volume.
 app.use('/u', express.static(UPLOADS_DIR, { maxAge: '30d', immutable: true }));
@@ -575,7 +675,9 @@ app.get('/api/stats', (_req, res) => {
     total_agents:       one(`SELECT COUNT(*) AS n FROM submissions WHERE approved = 1`).n,
     total_likes:        one(`SELECT COALESCE(SUM(likes), 0) AS n FROM submissions WHERE approved = 1`).n,
     total_hours_saved:  one(`SELECT COALESCE(SUM(time_saved_per_week), 0) AS n FROM submissions WHERE approved = 1`).n,
+    total_tokens:       one(`SELECT COALESCE(SUM(tokens_total), 0) AS n FROM submissions WHERE approved = 1`).n,
     total_runs:         one(`SELECT COALESCE(SUM(runs_completed), 0) AS n FROM submissions WHERE approved = 1`).n,
+    verified_agents:    one(`SELECT COUNT(*) AS n FROM submissions WHERE approved = 1 AND verified = 1`).n,
     new_this_week:      one(`SELECT COUNT(*) AS n FROM submissions
                              WHERE approved = 1 AND created_at >= datetime('now', '-7 days')`).n,
     integrations_tracked:
