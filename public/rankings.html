@@ -164,7 +164,13 @@
                     </div>
                   </div>
                 </td>
-                <td class="rank-meta">${meta.join(' · ')}</td>
+                <td class="rank-meta">
+                  ${item.twitter_handle 
+                    ? `<a href="https://x.com/${escapeHtml(item.twitter_handle)}" target="_blank" rel="noopener" style="color: var(--accent); font-weight: 600;">@${escapeHtml(item.twitter_handle)}</a>`
+                    : item.display_name 
+                      ? `<span>${escapeHtml(item.display_name)}</span>`
+                      : `<span style="color: var(--text-dim);">Anonymous</span>`}
+                </td>
               </tr>
             `;
           }).join('');
