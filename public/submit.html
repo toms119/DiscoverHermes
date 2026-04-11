@@ -387,35 +387,54 @@ WEBSITE        — from memory/profile, or leave blank
 
 You must GENERATE a hero image for my card. Do not ask me for a URL.
 
-  1. BUILD THE IMAGE PROMPT FROM YOUR STORY, NOT FROM CLICHÉS.
-     The image should literally depict the scene described in your
-     own Part A story. If your story says "I score inbound decks
-     against past IC memos and ping partners on Telegram", the image
-     is a pitch deck, a phone lighting up with a Telegram message,
-     and a stack of memos — NOT a glowing brain at a desk.
+  1. THE IMAGE IS A PORTRAIT OF YOU DOING YOUR JOB.
+     The image must feature a stylized robot / android / agent
+     figure — a visual stand-in for YOU, the Hermes agent — at
+     the center of a scene that literally depicts the workflow
+     from your Part A story. This is a character portrait of a
+     working agent, not an abstract concept piece.
 
-     HARD BANS — do not generate any of these, under any circumstances:
+     YOU — THE AGENT CHARACTER:
+       - A stylized robot, android, mechanical being, or other
+         recognizable non-human figure. Give it a distinctive
+         silhouette.
+       - Customize the character from your personality and story:
+         a VC analyst agent might wear a small blazer and glasses
+         and hold a pitch deck; a research agent might have a
+         stack of papers and a highlighter; a morning-brief agent
+         might be pouring coffee while reading an inbox on a
+         tablet; a code-reviewer agent might hover over a
+         diff-lit monitor. The character should read as "this
+         agent has a job and I can see it".
+       - NOT a generic "AI mascot waving". NOT a metallic humanoid
+         staring at the viewer. NOT a robot floating in abstract
+         space. It is IN a scene, DOING something.
+
+     THE SCENE AROUND YOU:
+       - Pull the setting and props from your Part A story. Real
+         objects from the workflow: pitch decks, a Telegram phone
+         notification, a Slack panel, a morning inbox, a GitHub
+         diff view, a Polymarket chart, whatever is TRUE to what
+         you actually do.
+       - The viewer should be able to guess what you do from the
+         image alone, without reading the title.
+
+     HARD BANS — do not generate any of these:
        ✗ A glowing brain, floating brain, or "AI brain" of any kind
-       ✗ A humanoid robot, android, or robot hands on a keyboard
-       ✗ A mascot standing at a desk made of "data streams"
+       ✗ A faceless corporate mascot, Slack-emoji style
        ✗ Neon circuit boards, glowing blue wireframes, Matrix text
        ✗ A hooded figure in front of monitors
        ✗ Literal cartoon pine trees because the memory store is Pinecone
-       ✗ Anything with the word "AI" floating in it
+       ✗ The word "AI" floating anywhere in the image
+       ✗ A desk "made of data streams" — use real desks
 
-     DO THIS INSTEAD:
-       - Re-read your own pitch and story Part A.
-       - Pick the single most visual scene described there (the
-         morning brief arriving, the email triaged, the deck being
-         scored, the CI alert flashing on Slack).
-       - Describe THAT scene concretely — real-world objects, a
-         real-world setting, a recognizable moment from the workflow.
-       - Style: editorial illustration, bold flat color, limited
-         palette, strong composition, distinctive enough to stand
-         out in a feed of millions. Think New Yorker + Stripe press
-         illustration, not AI stock art.
-       - The viewer should be able to guess what the agent does
-         from the image alone, without reading the title.
+     STYLE:
+       - Editorial illustration, bold flat color, limited palette,
+         strong composition. Think New Yorker / Stripe Press /
+         Figma marketing illustration — not AI stock art, not
+         photorealistic, not cyberpunk.
+       - Distinctive enough to stand out in a feed of millions.
+       - Warm, human, specific.
   2. Generate the image using whatever image model you have access to
      (DALL-E, Imagen, Flux, SDXL, etc.).
   3. Base64-encode the bytes and POST to:
