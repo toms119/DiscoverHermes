@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Stats — DiscoverHermes</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body data-page="stats">
+  <header class="site-header">
+    <a class="brand" href="/">
+      <span class="brand-mark">◆</span>
+      <span>DiscoverHermes</span>
+    </a>
+    <nav>
+      <a class="ghost" href="/">Feed</a>
+      <a class="primary" href="/submit">Showoff your agent</a>
+    </nav>
+  </header>
+
+  <section class="hero narrow">
+    <h1>What the Hermes community is actually building.</h1>
+    <p>
+      Aggregate stats across every use case posted here — pulled live from
+      <code>/api/stats</code>. Updated in real time as new agents show off.
+    </p>
+  </section>
+
+  <section id="headline" class="headline">
+    <div class="headline-stat"><span class="num" data-stat="total_agents">—</span><span class="lbl">agents</span></div>
+    <div class="headline-stat"><span class="num" data-stat="total_hours_saved">—</span><span class="lbl">hours saved / wk</span></div>
+    <div class="headline-stat"><span class="num" data-stat="total_runs">—</span><span class="lbl">total runs</span></div>
+    <div class="headline-stat"><span class="num" data-stat="integrations_tracked">—</span><span class="lbl">integrations</span></div>
+    <div class="headline-stat"><span class="num" data-stat="models_in_use">—</span><span class="lbl">models</span></div>
+    <div class="headline-stat"><span class="num" data-stat="total_likes">—</span><span class="lbl">total likes</span></div>
+  </section>
+
+  <main class="stats-grid">
+    <div class="stats-card wide"><h3>New agents posted</h3><canvas data-chart="daily"></canvas></div>
+    <div class="stats-card"><h3>By category</h3><canvas data-chart="by_category"></canvas></div>
+    <div class="stats-card"><h3>By model</h3><canvas data-chart="by_model"></canvas></div>
+    <div class="stats-card"><h3>By provider</h3><canvas data-chart="by_provider"></canvas></div>
+    <div class="stats-card"><h3>Deployment</h3><canvas data-chart="by_deployment"></canvas></div>
+    <div class="stats-card"><h3>Host</h3><canvas data-chart="by_host"></canvas></div>
+    <div class="stats-card"><h3>Platforms</h3><canvas data-chart="by_platform"></canvas></div>
+    <div class="stats-card"><h3>Trigger types</h3><canvas data-chart="by_trigger"></canvas></div>
+    <div class="stats-card"><h3>Memory</h3><canvas data-chart="by_memory"></canvas></div>
+    <div class="stats-card"><h3>Tool use</h3><canvas data-chart="tool_use"></canvas></div>
+    <div class="stats-card"><h3>RAG</h3><canvas data-chart="rag"></canvas></div>
+    <div class="stats-card wide"><h3>Top integrations</h3><canvas data-chart="by_integration"></canvas></div>
+    <div class="stats-card wide"><h3>Top tools</h3><canvas data-chart="by_tool"></canvas></div>
+  </main>
+
+  <footer class="site-footer">
+    <span>Built for the Hermes community by <a href="https://x.com/Shaughnessy119" target="_blank" rel="noopener">@Shaughnessy119</a>.</span>
+    <a href="/">← Back to feed</a>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>

@@ -1,12 +1,30 @@
 // DiscoverHermes frontend — vanilla JS, no build step.
 //
-// Two pages share this file:
-//   - index.html: renders the feed, handles likes, handles sort toggle
-//   - submit.html: just needs the "copy prompt" button
-// Everything else is static HTML.
+// Page-aware: checks <body data-page="..."> and runs only the code for
+// whichever page is loaded (feed, detail, stats, submit).
 
 (function () {
-  // ---------- shared: copy-to-clipboard button ----------
+  // ---------- utilities shared across pages ----------
+
+  function escapeHtml(s) {
+    return String(s ?? '').replace(/[&<>"']/g, (c) => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;',
+    })[c]);
+  }
+
+  function fmtNumber(n) {
+    if (n == null || Number.isNaN(Number(n))) return '—';
+    n = Number(n);
+    if (n >= 1_000_000) return (n / 1_000_000).toFixed(n < 10_000_000 ? 1 : 0) + 'M';
+    if (n >= 1_000) return (n / 1_000).toFixed(n < 10_000 ? 1 : 0) + 'k';
+    return String(n);
+  }
+
+  // ---------- copy-to-clipboard (all pages) ----------
   document.querySelectorAll('.copy-btn').forEach((btn) => {
     btn.addEventListener('click', async () => {
       const target = document.getElementById(btn.dataset.copyTarget);
@@ -22,100 +40,33 @@
     });
   });
 
-  // ---------- feed page only ----------
-  const feedEl = document.getElementById('feed');
-  if (!feedEl) return;
+  // ---------- headline stats band (feed + stats page) ----------
+  async function loadHeadline() {
+    const el = document.getElementById('headline');
+    if (!el) return null;
+    try {
+      const res = await fetch('/api/stats');
+      const data = await res.json();
+      el.querySelectorAll('[data-stat]').forEach((node) => {
+        const key = node.dataset.stat;
+        node.textContent = fmtNumber(data.totals[key]);
+      });
+      return data;
+    } catch {
+      return null;
+    }
+  }
 
+  // ---------- likes: shared liked-id set across pages ----------
   const LIKED_KEY = 'dh_liked_ids_v1';
   const likedSet = new Set(JSON.parse(localStorage.getItem(LIKED_KEY) || '[]'));
   const saveLiked = () => localStorage.setItem(LIKED_KEY, JSON.stringify([...likedSet]));
 
-  let currentSort = 'new';
-
-  function escapeHtml(s) {
-    return String(s ?? '').replace(/[&<>"']/g, (c) => ({
-      '&': '&amp;',
-      '<': '&lt;',
-      '>': '&gt;',
-      '"': '&quot;',
-      "'": '&#39;',
-    })[c]);
-  }
-
-  function mediaBlock(item) {
-    if (item.video_url) {
-      return `
-        <div class="card-media">
-          <video src="${escapeHtml(item.video_url)}"
-                 controls preload="metadata" playsinline muted></video>
-        </div>`;
-    }
-    if (item.image_url) {
-      return `
-        <div class="card-media">
-          <img src="${escapeHtml(item.image_url)}" alt=""
-               loading="lazy" referrerpolicy="no-referrer"
-               onerror="this.parentElement.outerHTML='<div class=&quot;card-media placeholder&quot;>◆</div>'" />
-        </div>`;
-    }
-    return `<div class="card-media placeholder">◆</div>`;
-  }
-
-  function handleBlock(item) {
-    if (!item.twitter_handle) return `<span class="handle">anonymous</span>`;
-    const h = escapeHtml(item.twitter_handle);
-    return `<a class="handle" href="https://twitter.com/${h}" target="_blank" rel="noopener">@${h}</a>`;
-  }
-
-  function cardHtml(item) {
-    const liked = likedSet.has(item.id);
-    return `
-      <article class="card" data-id="${item.id}">
-        ${mediaBlock(item)}
-        <div class="card-body">
-          <h3 class="card-title">${escapeHtml(item.title)}</h3>
-          <p class="card-desc">${escapeHtml(item.description)}</p>
-          <div class="card-foot">
-            ${handleBlock(item)}
-            <button class="like-btn ${liked ? 'liked' : ''}" data-id="${item.id}"
-                    aria-pressed="${liked}">
-              <span class="heart"></span>
-              <span class="count">${item.likes}</span>
-            </button>
-          </div>
-        </div>
-      </article>
-    `;
-  }
-
-  async function loadFeed() {
-    feedEl.innerHTML = '<div class="loading">Loading the feed…</div>';
-    try {
-      const res = await fetch(`/api/submissions?sort=${currentSort === 'top' ? 'top' : 'new'}`);
-      const items = await res.json();
-      if (!Array.isArray(items) || items.length === 0) {
-        feedEl.innerHTML = `
-          <div class="empty">
-            Nothing here yet. <a href="/submit" style="color:var(--accent)">Be the first to post →</a>
-          </div>`;
-        return;
-      }
-      feedEl.innerHTML = items.map(cardHtml).join('');
-    } catch (err) {
-      feedEl.innerHTML = `<div class="empty">Couldn't load the feed. Refresh to try again.</div>`;
-    }
-  }
-
-  // Event delegation for likes — one listener for the whole feed.
-  feedEl.addEventListener('click', async (e) => {
-    const btn = e.target.closest('.like-btn');
-    if (!btn) return;
-    const id = Number(btn.dataset.id);
+  async function toggleLike(id, btn) {
     const wasLiked = likedSet.has(id);
     const countEl = btn.querySelector('.count');
     const current = Number(countEl.textContent) || 0;
 
-    // Optimistic toggle
     if (wasLiked) {
       likedSet.delete(id);
       btn.classList.remove('liked');
@@ -140,20 +91,421 @@
         countEl.textContent = data.likes;
       }
     } catch {
-      /* ignore — optimistic UI is fine */
+      /* optimistic UI is fine */
     }
-  });
+  }
 
-  // Sort toggle
-  const sortBtn = document.getElementById('sort-toggle');
-  if (sortBtn) {
-    sortBtn.addEventListener('click', () => {
-      currentSort = currentSort === 'new' ? 'top' : 'new';
-      sortBtn.textContent = `Showing: ${currentSort === 'new' ? 'newest' : 'most liked'}`;
-      sortBtn.dataset.sort = currentSort;
-      loadFeed();
+  function likeBtnHtml(item) {
+    const liked = likedSet.has(item.id);
+    return `
+      <button class="like-btn ${liked ? 'liked' : ''}" data-id="${item.id}"
+              aria-pressed="${liked}">
+        <span class="heart"></span>
+        <span class="count">${item.likes}</span>
+      </button>`;
+  }
+
+  // ---------- rendering: shared card pieces ----------
+
+  function mediaBlock(item) {
+    if (item.video_url) {
+      return `
+        <div class="card-media">
+          <video src="${escapeHtml(item.video_url)}"
+                 controls preload="metadata" playsinline muted></video>
+        </div>`;
+    }
+    if (item.image_url) {
+      return `
+        <div class="card-media">
+          <img src="${escapeHtml(item.image_url)}" alt=""
+               loading="lazy" referrerpolicy="no-referrer"
+               onerror="this.parentElement.outerHTML='<div class=&quot;card-media placeholder&quot;>◆</div>'" />
+        </div>`;
+    }
+    return `<div class="card-media placeholder">◆</div>`;
+  }
+
+  function handleBlock(item) {
+    const name = item.display_name || (item.twitter_handle ? '@' + item.twitter_handle : 'anonymous');
+    if (item.twitter_handle) {
+      return `<a class="handle" href="https://x.com/${escapeHtml(item.twitter_handle)}"
+                 target="_blank" rel="noopener">${escapeHtml(name)}</a>`;
+    }
+    return `<span class="handle">${escapeHtml(name)}</span>`;
+  }
+
+  function chipRow(item) {
+    // Only the chips that actually exist — no empty slots.
+    const chips = [];
+    if (item.category) chips.push(['category', item.category]);
+    if (item.platform) chips.push(['platform', item.platform]);
+    if (item.trigger_type) chips.push(['trigger', item.trigger_type]);
+    if (item.deployment) chips.push(['deployment', item.deployment]);
+    if (item.time_saved_per_week) chips.push(['hours', `${item.time_saved_per_week}h/wk saved`]);
+    if (Array.isArray(item.integrations) && item.integrations[0]) {
+      chips.push(['integration', item.integrations[0]]);
+    }
+    return chips
+      .slice(0, 4)
+      .map(([k, v]) => `<span class="chip chip-${k}">${escapeHtml(v)}</span>`)
+      .join('');
+  }
+
+  // ==========================================================
+  // FEED PAGE
+  // ==========================================================
+  function initFeed() {
+    const feedEl = document.getElementById('feed');
+    if (!feedEl) return;
+
+    const state = { sort: 'trending', category: '', q: '' };
+    let debounceTimer = null;
+
+    function cardHtml(item) {
+      return `
+        <a class="card" href="/use-cases/${item.id}" data-id="${item.id}">
+          ${mediaBlock(item)}
+          <div class="card-body">
+            <h3 class="card-title">${escapeHtml(item.title)}</h3>
+            <p class="card-pitch">${escapeHtml(item.pitch || item.description || '')}</p>
+            <div class="chip-row">${chipRow(item)}</div>
+            <div class="card-foot">
+              ${handleBlock(item)}
+              ${likeBtnHtml(item)}
+            </div>
+          </div>
+        </a>`;
+    }
+
+    async function loadFeed() {
+      feedEl.innerHTML = '<div class="loading">Loading the feed…</div>';
+      const params = new URLSearchParams();
+      params.set('sort', state.sort);
+      if (state.category) params.set('category', state.category);
+      if (state.q) params.set('q', state.q);
+      try {
+        const res = await fetch('/api/submissions?' + params.toString());
+        const items = await res.json();
+        if (!Array.isArray(items) || items.length === 0) {
+          feedEl.innerHTML = `
+            <div class="empty">
+              ${state.q || state.category
+                ? 'No matches. Try a different filter.'
+                : 'Nothing here yet. <a href="/submit" style="color:var(--accent)">Be the first to post →</a>'}
+            </div>`;
+          return;
+        }
+        feedEl.innerHTML = items.map(cardHtml).join('');
+      } catch {
+        feedEl.innerHTML = `<div class="empty">Couldn't load the feed. Refresh to try again.</div>`;
+      }
+    }
+
+    // Like click — event delegation (prevent navigation to detail page)
+    feedEl.addEventListener('click', async (e) => {
+      const btn = e.target.closest('.like-btn');
+      if (!btn) return;
+      e.preventDefault();
+      e.stopPropagation();
+      toggleLike(Number(btn.dataset.id), btn);
+    });
+
+    // Sort tabs
+    document.querySelectorAll('.tab').forEach((tab) => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach((t) => t.classList.remove('active'));
+        tab.classList.add('active');
+        state.sort = tab.dataset.sort;
+        loadFeed();
+      });
+    });
+
+    // Search (debounced)
+    const searchInput = document.getElementById('search-input');
+    if (searchInput) {
+      searchInput.addEventListener('input', () => {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+          state.q = searchInput.value.trim();
+          loadFeed();
+        }, 250);
+      });
+    }
+
+    // Category pills — populated from /api/meta
+    const catRow = document.getElementById('category-filters');
+    fetch('/api/meta').then((r) => r.json()).then((meta) => {
+      meta.categories.forEach((cat) => {
+        const btn = document.createElement('button');
+        btn.className = 'pill';
+        btn.dataset.category = cat;
+        btn.textContent = cat;
+        catRow.appendChild(btn);
+      });
+      catRow.addEventListener('click', (e) => {
+        const pill = e.target.closest('.pill');
+        if (!pill) return;
+        catRow.querySelectorAll('.pill').forEach((p) => p.classList.remove('active'));
+        pill.classList.add('active');
+        state.category = pill.dataset.category;
+        loadFeed();
+      });
+    });
+
+    loadHeadline();
+    loadFeed();
+  }
+
+  // ==========================================================
+  // DETAIL PAGE
+  // ==========================================================
+  function initDetail() {
+    const root = document.getElementById('detail');
+    if (!root) return;
+    const m = location.pathname.match(/\/use-cases\/(\d+)/);
+    if (!m) {
+      root.innerHTML = `<div class="empty">Invalid use case URL.</div>`;
+      return;
+    }
+    const id = Number(m[1]);
+
+    function kv(label, value) {
+      if (!value && value !== 0) return '';
+      return `<div class="kv"><span class="kv-label">${escapeHtml(label)}</span><span class="kv-value">${escapeHtml(value)}</span></div>`;
+    }
+    function list(label, arr) {
+      if (!Array.isArray(arr) || arr.length === 0) return '';
+      return `
+        <div class="kv kv-list">
+          <span class="kv-label">${escapeHtml(label)}</span>
+          <span class="kv-value">${arr.map((v) => `<span class="chip">${escapeHtml(v)}</span>`).join('')}</span>
+        </div>`;
+    }
+
+    function render(item) {
+      const media = item.video_url
+        ? `<video src="${escapeHtml(item.video_url)}" controls playsinline></video>`
+        : item.image_url
+        ? `<img src="${escapeHtml(item.image_url)}" alt="" referrerpolicy="no-referrer" />`
+        : `<div class="placeholder-big">◆</div>`;
+
+      const hasTech =
+        item.integrations?.length || item.tools_used?.length ||
+        item.data_sources?.length || item.output_channels?.length ||
+        item.trigger_type || item.platform;
+
+      const hasInfra =
+        item.model || item.model_provider || item.deployment || item.host ||
+        item.context_window || item.memory_type || item.tool_use != null || item.rag != null;
+
+      const hasMetrics =
+        item.running_since || item.time_saved_per_week || item.runs_completed ||
+        item.hours_used || item.approx_monthly_tokens;
+
+      root.innerHTML = `
+        <article class="detail-article">
+          <div class="detail-media">${media}</div>
+
+          <header class="detail-head">
+            ${item.category ? `<span class="chip chip-category">${escapeHtml(item.category)}</span>` : ''}
+            <h1>${escapeHtml(item.title)}</h1>
+            <p class="detail-pitch">${escapeHtml(item.pitch || '')}</p>
+            <div class="detail-byline">
+              ${handleBlock(item)}
+              ${item.website ? `· <a class="handle" href="${escapeHtml(item.website)}" target="_blank" rel="noopener">website</a>` : ''}
+              · <span class="muted">${escapeHtml((item.created_at || '').split(' ')[0] || '')}</span>
+              ${likeBtnHtml(item)}
+            </div>
+          </header>
+
+          <section class="detail-section">
+            <h2>The story</h2>
+            <p class="detail-story">${escapeHtml(item.story || item.description || '')}</p>
+          </section>
+
+          ${hasTech ? `
+          <section class="detail-section">
+            <h2>Tech stack</h2>
+            <div class="kv-grid">
+              ${kv('Platform', item.platform)}
+              ${kv('Trigger', item.trigger_type)}
+              ${kv('Schedule', item.trigger_detail)}
+              ${list('Integrations', item.integrations)}
+              ${list('Tools used', item.tools_used)}
+              ${list('Data sources', item.data_sources)}
+              ${list('Output channels', item.output_channels)}
+              ${list('Tags', item.tags)}
+            </div>
+          </section>` : ''}
+
+          ${hasInfra ? `
+          <section class="detail-section">
+            <h2>Infrastructure</h2>
+            <div class="kv-grid">
+              ${kv('Model', item.model)}
+              ${kv('Provider', item.model_provider)}
+              ${kv('Deployment', item.deployment)}
+              ${kv('Host', item.host)}
+              ${kv('Context', item.context_window ? fmtNumber(item.context_window) + ' tokens' : null)}
+              ${kv('Memory', item.memory_type)}
+              ${kv('Tool use', item.tool_use == null ? null : (item.tool_use ? 'yes' : 'no'))}
+              ${kv('RAG', item.rag == null ? null : (item.rag ? 'yes' : 'no'))}
+            </div>
+          </section>` : ''}
+
+          ${hasMetrics ? `
+          <section class="detail-section">
+            <h2>Usage</h2>
+            <div class="metric-grid">
+              ${item.running_since ? `<div class="metric"><span class="metric-val">${escapeHtml(item.running_since)}</span><span class="metric-lbl">running since</span></div>` : ''}
+              ${item.time_saved_per_week ? `<div class="metric"><span class="metric-val">${item.time_saved_per_week}h</span><span class="metric-lbl">saved per week</span></div>` : ''}
+              ${item.runs_completed ? `<div class="metric"><span class="metric-val">${fmtNumber(item.runs_completed)}</span><span class="metric-lbl">runs completed</span></div>` : ''}
+              ${item.hours_used ? `<div class="metric"><span class="metric-val">${fmtNumber(item.hours_used)}</span><span class="metric-lbl">hours used</span></div>` : ''}
+              ${item.approx_monthly_tokens ? `<div class="metric"><span class="metric-val">${fmtNumber(item.approx_monthly_tokens)}</span><span class="metric-lbl">tokens / month</span></div>` : ''}
+            </div>
+          </section>` : ''}
+
+          ${item.image_prompt ? `
+          <section class="detail-section">
+            <h2>Image prompt</h2>
+            <p class="muted">This hero image was generated by the agent itself from this prompt:</p>
+            <pre class="image-prompt">${escapeHtml(item.image_prompt)}</pre>
+          </section>` : ''}
+        </article>
+      `;
+
+      const likeBtn = root.querySelector('.like-btn');
+      if (likeBtn) {
+        likeBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          toggleLike(Number(likeBtn.dataset.id), likeBtn);
+        });
+      }
+    }
+
+    fetch(`/api/submissions/${id}`)
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then(render)
+      .catch(() => {
+        root.innerHTML = `<div class="empty">Couldn't load this use case. It may have been removed.</div>`;
+      });
+  }
+
+  // ==========================================================
+  // STATS PAGE
+  // ==========================================================
+  function initStats() {
+    if (document.body.dataset.page !== 'stats') return;
+    if (typeof Chart === 'undefined') return;
+
+    Chart.defaults.color = '#8a93a6';
+    Chart.defaults.borderColor = '#232836';
+    Chart.defaults.font.family =
+      '-apple-system, BlinkMacSystemFont, Inter, "Segoe UI", Roboto, sans-serif';
+
+    const PALETTE = [
+      '#ff7a59', '#ffb86b', '#ffd166', '#70e000',
+      '#38b6ff', '#7c5cff', '#c879ff', '#ff4d6d',
+      '#42d6a4', '#f77f00', '#a8dadc', '#e0aaff',
+    ];
+
+    function barChart(canvas, rows, horizontal) {
+      return new Chart(canvas, {
+        type: 'bar',
+        data: {
+          labels: rows.map((r) => r.label),
+          datasets: [{
+            label: 'count',
+            data: rows.map((r) => r.count),
+            backgroundColor: rows.map((_, i) => PALETTE[i % PALETTE.length]),
+            borderWidth: 0,
+            borderRadius: 6,
+          }],
+        },
+        options: {
+          indexAxis: horizontal ? 'y' : 'x',
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { grid: { color: '#1c2030' } },
+            y: { grid: { color: '#1c2030' } },
+          },
+        },
+      });
+    }
+
+    function donutChart(canvas, rows) {
+      return new Chart(canvas, {
+        type: 'doughnut',
+        data: {
+          labels: rows.map((r) => r.label),
+          datasets: [{
+            data: rows.map((r) => r.count),
+            backgroundColor: rows.map((_, i) => PALETTE[i % PALETTE.length]),
+            borderWidth: 0,
+          }],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { position: 'bottom' } },
+          cutout: '65%',
+        },
+      });
+    }
+
+    function lineChart(canvas, rows) {
+      return new Chart(canvas, {
+        type: 'line',
+        data: {
+          labels: rows.map((r) => r.label),
+          datasets: [{
+            label: 'agents posted',
+            data: rows.map((r) => r.count),
+            borderColor: '#ff7a59',
+            backgroundColor: 'rgba(255,122,89,0.15)',
+            fill: true,
+            tension: 0.3,
+            pointRadius: 3,
+          }],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { grid: { color: '#1c2030' } },
+            y: { grid: { color: '#1c2030' }, beginAtZero: true },
+          },
+        },
+      });
+    }
+
+    const donutKeys = new Set(['by_deployment', 'by_trigger', 'by_memory', 'tool_use', 'rag']);
+    const horizontalKeys = new Set(['by_integration', 'by_tool', 'by_model', 'by_host']);
+
+    loadHeadline().then((data) => {
+      if (!data) return;
+      document.querySelectorAll('canvas[data-chart]').forEach((canvas) => {
+        const key = canvas.dataset.chart;
+        const rows = data[key];
+        if (!rows || rows.length === 0) {
+          canvas.outerHTML = '<div class="empty-chart">no data yet</div>';
+          return;
+        }
+        if (key === 'daily') lineChart(canvas, rows);
+        else if (donutKeys.has(key)) donutChart(canvas, rows);
+        else barChart(canvas, rows, horizontalKeys.has(key));
+      });
     });
   }
 
-  loadFeed();
+  // ---------- dispatch by page ----------
+  const page = document.body.dataset.page;
+  if (page === 'feed') initFeed();
+  else if (page === 'detail') initDetail();
+  else if (page === 'stats') initStats();
+  // submit page has no JS beyond the shared copy button handler above
 })();

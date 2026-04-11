@@ -7,14 +7,14 @@
   <meta name="description" content="A discovery portal for cool things people are building with their Hermes agent from News Research." />
   <link rel="stylesheet" href="/styles.css" />
 </head>
-<body>
+<body data-page="feed">
   <header class="site-header">
     <a class="brand" href="/">
       <span class="brand-mark">◆</span>
       <span>DiscoverHermes</span>
     </a>
     <nav>
-      <button id="sort-toggle" class="ghost" data-sort="new">Showing: newest</button>
+      <a class="ghost" href="/stats">Stats</a>
       <a class="primary" href="/submit">Showoff your agent</a>
     </nav>
   </header>
@@ -23,8 +23,33 @@
     <h1>See what people are building with Hermes.</h1>
     <p>
       A feed of real-world use cases from people running the Hermes agent by News Research.
-      Post yours straight from Telegram — just tell your agent to share it here.
+      Post yours straight from Telegram — just tell your agent to show it off here.
     </p>
+  </section>
+
+  <!-- Headline stats band, populated from /api/stats -->
+  <section id="headline" class="headline">
+    <div class="headline-stat"><span class="num" data-stat="total_agents">—</span><span class="lbl">agents</span></div>
+    <div class="headline-stat"><span class="num" data-stat="total_hours_saved">—</span><span class="lbl">hours saved / wk</span></div>
+    <div class="headline-stat"><span class="num" data-stat="integrations_tracked">—</span><span class="lbl">integrations</span></div>
+    <div class="headline-stat"><span class="num" data-stat="models_in_use">—</span><span class="lbl">models in use</span></div>
+  </section>
+
+  <!-- Sort tabs + search -->
+  <section class="controls">
+    <div class="tabs" role="tablist">
+      <button class="tab active" data-sort="trending">Trending</button>
+      <button class="tab" data-sort="top">Top</button>
+      <button class="tab" data-sort="new">New</button>
+    </div>
+    <div class="search">
+      <input id="search-input" type="search" placeholder="Search agents, models, integrations…" />
+    </div>
+  </section>
+
+  <!-- Category pill filters, populated from /api/meta -->
+  <section id="category-filters" class="pill-row" aria-label="Filter by category">
+    <button class="pill active" data-category="">All</button>
   </section>
 
   <main id="feed" class="feed" aria-live="polite">
@@ -33,7 +58,7 @@
 
   <footer class="site-footer">
     <span>Built for the Hermes community by <a href="https://x.com/Shaughnessy119" target="_blank" rel="noopener">@Shaughnessy119</a>.</span>
-    <a href="/submit">Share what you built →</a>
+    <a href="/submit">Show off what you built →</a>
   </footer>
 
   <script src="/app.js"></script>
