@@ -491,14 +491,40 @@ app.get('/api/verify/:id', (req, res) => {
 
 // Serve user-uploaded images from the volume.
 app.use('/u', express.static(UPLOADS_DIR, { maxAge: '30d', immutable: true }));
+
+// Cache-busting: every boot gets a fresh BUILD_ID. HTML responses
+// rewrite /styles.css and /app.js to /styles.css?v=BUILD_ID so a new
+// Railway deploy lands instantly regardless of browser/CDN cache.
+const BUILD_ID = Date.now().toString(36);
+function serveHtml(fileName) {
+  const fullPath = path.join(__dirname, 'public', fileName);
+  return (_req, res) => {
+    fs.readFile(fullPath, 'utf8', (err, html) => {
+      if (err) {
+        res.status(500).type('text/plain').send('error loading page');
+        return;
+      }
+      const out = html
+        .replace(/(href|src)="\/(styles\.css|app\.js)"/g, `$1="/$2?v=${BUILD_ID}"`);
+      res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+      res.type('html').send(out);
+    });
+  };
+}
+
+// Home page: rewrite before express.static gets a chance to serve index.html.
+app.get('/', serveHtml('index.html'));
+
 // Static site. HTML/CSS/JS always revalidate so a Railway redeploy
 // shows up immediately — we were seeing stale browser cache hide
 // freshly-pushed changes. ETag is still on, so revalidations are
 // cheap: a 304 when nothing changed, the new bytes when it did.
+// `index: false` so `/` always hits the HTML rewriter above.
 app.use(
   express.static(path.join(__dirname, 'public'), {
     etag: true,
     lastModified: true,
+    index: false,
     setHeaders: (res, filePath) => {
       if (/\.(html|css|js)$/.test(filePath)) {
         res.setHeader('Cache-Control', 'no-cache, must-revalidate');
@@ -1225,18 +1251,11 @@ app.get('/api/featured', (req, res) => {
 });
 
 // ---------- page routes ----------
-app.get('/submit', (_req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'submit.html'));
-});
-app.get('/stats', (_req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'stats.html'));
-});
-app.get('/rankings', (_req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'rankings.html'));
-});
-app.get('/use-cases/:id', (_req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'use-case.html'));
-});
+// All HTML pages route through serveHtml so asset URLs get cache-busted.
+app.get('/submit', serveHtml('submit.html'));
+app.get('/stats', serveHtml('stats.html'));
+app.get('/rankings', serveHtml('rankings.html'));
+app.get('/use-cases/:id', serveHtml('use-case.html'));
 
 app.listen(PORT, () => {
   console.log(`DiscoverHermes listening on http://localhost:${PORT}`);
