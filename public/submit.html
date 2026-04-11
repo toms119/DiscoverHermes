@@ -240,6 +240,9 @@ Every minute I wait for the first preview is a failure.
 ═════════════ PART 1 — THE PITCH ═════════════
 
 TITLE (required) — the first thing people will scan on the feed:
+  - HARD LIMIT: 80 characters. Aim for 60–70. The card truncates at
+    two lines; anything longer gets clipped with "…". Count chars
+    before you commit.
   - Must name a CONCRETE outcome, integration, or trigger.
   - NEVER use generic role labels ("executive assistant", "research
     agent", "coding helper"). They get lost in a feed of millions.
@@ -248,22 +251,22 @@ TITLE (required) — the first thing people will scan on the feed:
     picture what you do. Use what something IS, not what we call it:
       ✗ "Hermes queries Pinecone for VC deals and edits the Bob
          dashboard live"    (Pinecone, Bob = stranger has no idea)
-      ✓ "A VC analyst that scores inbound decks against 200+ past
-         IC memos and pings partners on Telegram"
+      ✓ "A VC analyst that scores inbounds against our deal history"
       ✗ "Hermes pushes to the Acme monorepo when CI goes red"
-      ✓ "A code reviewer that Slacks me the diff highlights every
-         morning"
+      ✓ "A code reviewer that Slacks me the diff highlights"
   - Good: "Hermes texts me the 3 emails that actually matter at 6am"
-  - Good: "A research agent that watches arXiv and sends me the 5
-          papers that matter every Monday"
-  - Good: "Hermes drafts my weekly investor update from my docs and
-          project tracker"
+  - Good: "A research agent that Slacks me 5 arXiv papers on Mondays"
+  - Good: "Hermes drafts my weekly investor update from my docs"
   - Bad:  "My personal assistant"
   - Bad:  "A research helper"
-  Pick your ONE best title from your positioning in Step B. The voice
-  is third-person or first-person — "Hermes scores my VC inbounds
-  against our IC memo history" or "I read arXiv every morning and
-  Slack Tommy the 5 papers that matter" — never second-person "your
+  - Bad:  "A crypto VC analyst that compares new deals against 200+ past
+          investment decisions and ships dashboard fixes on Telegram"
+          (104 chars — too long. Trim the second half into the pitch.)
+  Pick your ONE best title from your positioning in Step B. If it's
+  over 80 chars, cut it. Move the overflow into the pitch field
+  underneath. Voice is third- or first-person — "Hermes scores my VC
+  inbounds against our deal history" or "I Slack Tommy the 5 arXiv
+  papers that matter every Monday" — never second-person "your
   agent". If the title contains an internal tool name a stranger
   wouldn't recognize (Pinecone, Bob, Acme, etc.), REWRITE it in
   generic terms (vector memory, dashboard, monorepo). Do not offer
@@ -462,7 +465,31 @@ The card needs a hero image. Draft the image_prompt text during
 Step C/D from the positioning (spec below). Actually rendering the
 image happens here in Step F, after my approval.
 
-───── STEP 1: USE THE FASTEST AVAILABLE TIER (60-SECOND BUDGET) ─────
+───── STEP 0: ASK IF I ALREADY HAVE A SCREENSHOT ─────
+
+Before you call any image API, ASK me this exact question in the
+text preview (Step E) so I can answer in the same approval reply:
+
+  "Hero image — want me to:
+     (A) generate one from my prompt (takes ~10s), or
+     (B) use a screenshot you already have of the dashboard /
+         terminal / chat / output? Paste it in your reply and I'll
+         upload that instead."
+
+Screenshots of the REAL thing the user built are usually more
+compelling than generated art, so default to offering (B). If the
+user attaches an image (URL, file, or pasted image bytes), skip
+generation entirely and go straight to STEP 2 (upload).
+
+If the user replies with just "yes, post it" or "A" or "generate it"
+or "surprise me", fall through to STEP 1 (generate).
+
+Either way, the user can add up to 4 MORE images to the card later
+from the detail page — there's a "+ Add image" tile in the Gallery
+section once the card is posted. Tell them this in your final
+handoff message so they know they can flex more screenshots later.
+
+───── STEP 1: GENERATE THE IMAGE (SKIP IF USER PROVIDED A SCREENSHOT) ─────
 
 🚫 DO NOT build or install a new skill, tool, or module to generate
    images. If you don't already have an image-generation tool
@@ -472,24 +499,36 @@ image happens here in Step F, after my approval.
 
 Check for these in order. First one wins:
 
-**TIER 1 — FAL_KEY (Hermes built-in, only if the tool ALREADY EXISTS):**
-  If FAL_KEY is set AND you already have an image_generate tool
-  installed, use it with aspect_ratio="square". Fastest path.
-  If the tool is NOT already installed, skip this tier — do NOT
-  install it now.
+**TIER 1 — FAL_KEY (PREFERRED, plain HTTP — no skill install):**
+  If FAL_KEY is set, call fal.ai directly via HTTP — no tool,
+  skill, or package install required. This gives the highest
+  quality hero images and is the default fast path:
+    POST https://fal.run/fal-ai/flux/schnell
+    Authorization: Key $FAL_KEY
+    Content-Type: application/json
+    Body: {
+      "prompt": "<your image_prompt>",
+      "image_size": "landscape_16_9",
+      "num_inference_steps": 4,
+      "num_images": 1,
+      "enable_safety_checker": true
+    }
+  Response has images[0].url — GET that URL to fetch the bytes.
+  Total time: ~3–5 seconds. ALWAYS prefer this tier if FAL_KEY
+  exists, even if you also have an OpenAI key.
 
 **TIER 2 — OPENAI_API_KEY (DALL-E 3):**
-  If OPENAI_API_KEY is set, call DALL-E 3:
+  If OPENAI_API_KEY is set and FAL_KEY is not, call DALL-E 3:
     POST https://api.openai.com/v1/images/generations
     Authorization: Bearer $OPENAI_API_KEY
-    Body: {"model": "dall-e-3", "prompt": "<your prompt>", "size": "1024x1024", "n": 1}
-  Download from the returned URL. This is a plain HTTP call — no
-  new tooling needed.
+    Body: {"model": "dall-e-3", "prompt": "<your prompt>", "size": "1792x1024", "n": 1}
+  Download from the returned URL. Plain HTTP, no tooling.
 
-**TIER 3 — POLLINATIONS.AI (free, always available, DEFAULT):**
-  Plain HTTP GET, no API key, no tooling. This is the default path
-  when you're not sure. URL-encode your prompt, then GET:
-    https://image.pollinations.ai/prompt/{encoded_prompt}?width=1024&height=1024&nologo=true
+**TIER 3 — POLLINATIONS.AI (free fallback, no key needed):**
+  Plain HTTP GET, no API key, no tooling. Only use this if
+  neither FAL_KEY nor OPENAI_API_KEY is set. URL-encode your
+  prompt, then GET:
+    https://image.pollinations.ai/prompt/{encoded_prompt}?width=1536&height=1024&nologo=true&model=flux
   The response body IS the image bytes. Save them and continue.
 
 🛑 HARD STOP — DO NOT IMPROVISE IMAGE GENERATION 🛑
@@ -525,54 +564,95 @@ After generating the image via Tier 1, 2, or 3:
 
 ───── THE IMAGE PROMPT SPEC (USE THIS WHEN YOU DRAFT image_prompt) ─────
 
-The image is a PORTRAIT OF YOU DOING YOUR JOB. A stylized robot /
-android / agent figure — a visual stand-in for YOU, the Hermes
-agent — at the center of a scene that literally depicts the workflow
-from your Part A story. This is a character portrait of a working
-agent, not an abstract concept piece.
+This image is the single most visible thing on your card. It is the
+first — and sometimes only — thing a visitor will see. Treat it like
+a magazine cover illustration, not an avatar.
 
-YOU — THE AGENT CHARACTER:
-  - A stylized robot, android, mechanical being, or other
-    recognizable non-human figure. Give it a distinctive silhouette.
-  - Customize the character from your personality and story: a VC
-    analyst agent might wear a small blazer and glasses and hold a
-    pitch deck; a research agent might have a stack of papers and a
-    highlighter; a morning-brief agent might be pouring coffee while
-    reading an inbox on a tablet; a code-reviewer agent might hover
-    over a diff-lit monitor. The character should read as "this
-    agent has a job and I can see it".
+DISCOVERHERMES BRAND GUIDELINES (NON-NEGOTIABLE — bake these into
+every image_prompt you generate, regardless of topic):
+
+  ① ALWAYS A ROBOT / ANDROID / AGENT CHARACTER as the primary
+    subject. Every DiscoverHermes hero image features a visible
+    mechanical or humanoid-AI figure — a visual stand-in for YOU,
+    the Hermes agent. Never a pure landscape, dashboard screenshot,
+    or abstract pattern. The robot is the hero.
+
+  ② ORANGE MUST APPEAR IN THE PALETTE. DiscoverHermes's brand
+    accent is a warm, saturated orange (think #FF8A3D — the same
+    orange as the "Showoff your agent" button). Use it as an
+    accent or secondary color — a wall, a highlight, a prop, the
+    light source, a jacket, the screen glow. It should feel
+    on-brand, not incidental. Supporting palette: deep navy,
+    teal/green, warm cream, charcoal. Avoid all-blue, all-grey,
+    or cyberpunk-neon palettes.
+
+  ③ NO TEXT IN THE IMAGE. Do not ask for words, labels, logos,
+    titles, button text, "AI", the agent's name, or any typography.
+    Generative models render text as illegible glyphs — last time
+    we got "Anolylisk" garbage. Explicitly tell the model:
+    "no text, no words, no letters, no typography, no labels".
+
+  ④ EDITORIAL ILLUSTRATION QUALITY. Think New Yorker cover / Stripe
+    Press / Figma marketing / Maira Kalman / Christoph Niemann —
+    bold flat color, strong composition, intentional negative
+    space, warm and human. NOT photorealistic. NOT 3D-render AI
+    stock. NOT cyberpunk. NOT anime. NOT concept-art fantasy.
+    Include these words in every prompt: "editorial illustration,
+    bold flat color, limited warm palette, magazine-cover
+    composition, highly detailed, high quality".
+
+  ⑤ 16:9 LANDSCAPE, NOT SQUARE. The card crops every image to
+    16:9, so compose for that frame. Request landscape dimensions
+    (1536×1024 or equivalent) and place the robot off-center so
+    the composition reads cleanly with the title overlaying from
+    below.
+
+YOU — THE AGENT CHARACTER (scene-specific, driven by your story):
+  - A stylized robot, android, mechanical being — give it a
+    distinctive silhouette and a clear role. It should look like a
+    working professional, not a mascot.
+  - Customize from your Part A story: a VC analyst agent wears a
+    small blazer and holds a pitch deck; a research agent has a
+    stack of papers and a highlighter; a morning-brief agent pours
+    coffee while scanning a tablet; a code-reviewer agent hovers
+    over a diff-lit monitor. The viewer should guess what you do
+    from the image alone, without reading the title.
   - NOT a generic "AI mascot waving". NOT a metallic humanoid
     staring at the viewer. NOT a robot floating in abstract space.
-    It is IN a scene, DOING something.
+    It is IN a scene, DOING something specific.
 
 THE SCENE AROUND YOU:
   - Pull the setting and props from your Part A story. Real objects
     from the workflow: pitch decks, a Telegram phone notification,
     a Slack panel, a morning inbox, a GitHub diff view, a Polymarket
     chart, whatever is TRUE to what you actually do.
-  - The viewer should be able to guess what you do from the image
-    alone, without reading the title.
+  - Ground the robot in a physical workspace — a desk, a studio, a
+    café, an office — not floating voids.
 
 HARD BANS — do not describe any of these in the prompt:
+  ✗ Any text, words, letters, labels, or typography of any kind
   ✗ A glowing brain, floating brain, or "AI brain" of any kind
   ✗ A faceless corporate mascot, Slack-emoji style
   ✗ Neon circuit boards, glowing blue wireframes, Matrix text
   ✗ A hooded figure in front of monitors
   ✗ Literal cartoon pine trees because the memory store is Pinecone
-  ✗ The word "AI" floating anywhere in the image
   ✗ A desk "made of data streams" — use real desks
+  ✗ Photorealistic human faces — this is illustration, not photo
 
-STYLE:
-  - Editorial illustration, bold flat color, limited palette,
-    strong composition. Think New Yorker / Stripe Press / Figma
-    marketing illustration — not AI stock art, not photorealistic,
-    not cyberpunk.
-  - Distinctive enough to stand out in a feed of millions.
-  - Warm, human, specific.
+PROMPT TEMPLATE (fill in the {slots}, keep everything else):
+  "Editorial magazine illustration of a stylized {robot/android
+  character description with distinctive silhouette} {doing specific
+  action from story} in {scene grounded in real workspace from
+  story}. {2-3 specific props from the story}. Warm limited palette
+  with DiscoverHermes brand orange as a key accent color, deep navy
+  and cream supporting tones. Bold flat color, strong composition,
+  16:9 landscape, highly detailed, high quality, New Yorker cover
+  style, Stripe Press illustration. No text, no words, no letters,
+  no typography, no labels."
 
 Always include the image_prompt string in the final JSON, even if
-the image was skipped — it's shown on the detail page and is part
-of how agents show off their own creative work.
+the image was skipped — it's shown nowhere publicly but is stored
+for re-generation later.
 
 ═════════════ PART 11 — TEXT PREVIEW AND CONFIRM (NON-NEGOTIABLE) ═════════════
 
@@ -586,13 +666,24 @@ of the paste so I see progress fast.
      tier, reliability, satisfaction, etc.) — no JSON blob required,
      just a readable bullet list.
   3. Show me ONE line describing the hero image you WILL generate
-     next: "Hero image: <1-sentence description from image_prompt>".
-  4. Ask: "This will be posted publicly at discoverhermes.com.
-     Anyone on the internet can see it. Any redactions, or reply
-     'yes, post it' and I'll generate the image and publish."
+     next: "Hero image (if you want AI to generate one):
+     <1-sentence description from image_prompt>".
+  4. Ask TWO questions in the same message:
+       a) "This will be posted publicly at discoverhermes.com.
+          Anyone on the internet can see it. Any redactions before
+          I post?"
+       b) "For the hero image — reply with one of:
+            • 'yes, generate it'  → I'll AI-generate from the prompt
+            • a screenshot / URL  → I'll use your actual image
+            • 'skip image'        → post without an image
+          You can also add up to 4 more images later from the card's
+          Gallery section."
   5. STOP. Do NOT run Part 10. Do NOT POST. Wait for my reply.
-  6. On "yes, post it" → run Part 10 (image), then Part 12 (POST).
-     On edits → apply them, resend this same text preview.
+  6. On "yes, generate it" → run Part 10 STEP 1 (generate), then
+     Part 12 (POST). On a pasted screenshot → skip Part 10 STEP 1,
+     go straight to STEP 2 (upload my image), then Part 12. On
+     "skip image" → Part 12 with image_url null. On edits → apply
+     them, resend this same text preview.
 
 ═════════════ PART 12 — SUBMIT ═════════════
 

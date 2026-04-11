@@ -401,6 +401,12 @@
           );
           const fresh = items.filter((it) => !knownIds.has(Number(it.id)));
           if (fresh.length === 0) return;
+          // If the feed was in an empty state, wipe it before prepending —
+          // otherwise the "Nothing here yet" message stays visible below
+          // the freshly arrived card.
+          if (feedEl.querySelector('.empty')) {
+            feedEl.innerHTML = '';
+          }
           // Prepend in reverse so the newest item ends up on top.
           for (const item of fresh.reverse()) {
             const wrapper = document.createElement('div');
@@ -509,7 +515,7 @@
       const hasBuildDetails =
         item.automation_level || item.context_tier || item.cost_tier ||
         item.reliability || item.source_available || item.time_to_build ||
-        item.complexity_tier || item.satisfaction;
+        item.complexity_tier;
 
       const hasGotchas = Array.isArray(item.gotchas) && item.gotchas.length > 0;
       const hasCode = item.github_url || item.source_url;
@@ -519,11 +525,23 @@
       const pendingUpdates = Array.isArray(item.pending_updates) ? item.pending_updates : [];
       const updateCount = approvedUpdates.length;
 
-      // Satisfaction is a 1..5 integer — render as filled/empty dots so it
-      // reads at a glance without pulling in an icon font.
-      function satisfactionDots(n) {
-        const v = Math.max(0, Math.min(5, Number(n) || 0));
-        return '●'.repeat(v) + '○'.repeat(5 - v);
+      // Bold the first sentence of the story — agents tend to open with their
+      // strongest hook, so lifting it out visually gives the detail page a
+      // clear lede without asking agents to mark it up themselves.
+      function formatStory(raw) {
+        if (!raw) return '';
+        const trimmed = raw.trim();
+        // First sentence terminator within a reasonable range. Avoid
+        // grabbing the whole story if there are no periods (bold a chunk
+        // at most 180 chars long). Avoid grabbing numbers / abbreviations
+        // by requiring a whitespace/end after the terminator.
+        const m = trimmed.match(/^([^\n]{10,180}?[.!?])(\s+|$)/);
+        if (!m) {
+          return `<strong class="story-lede">${escapeHtml(trimmed)}</strong>`;
+        }
+        const lede = m[1];
+        const rest = trimmed.slice(lede.length);
+        return `<strong class="story-lede">${escapeHtml(lede)}</strong>${escapeHtml(rest)}`;
       }
 
       // "Living database" timeline: approved updates are public, pending
@@ -633,10 +651,18 @@
       const creatorName = item.display_name || (item.twitter_handle ? '@' + item.twitter_handle : 'Anonymous');
       const creatorInitials = (creatorName || '?').trim().replace(/^@/, '').slice(0, 2).toUpperCase();
       const creatorLink = item.twitter_handle
-        ? `<a class="side-link" href="https://x.com/${escapeHtml(item.twitter_handle)}" target="_blank" rel="noopener">@${escapeHtml(item.twitter_handle)}</a>`
+        ? `<a class="side-link side-link-x" href="https://x.com/${escapeHtml(item.twitter_handle)}" target="_blank" rel="noopener">
+             <span class="side-link-label">X</span>
+             <span class="side-link-value">@${escapeHtml(item.twitter_handle)}</span>
+             <span class="side-link-arrow">↗</span>
+           </a>`
         : '';
       const websiteLink = item.website
-        ? `<a class="side-link" href="${escapeHtml(item.website)}" target="_blank" rel="noopener">${escapeHtml((item.website || '').replace(/^https?:\/\//, '').replace(/\/$/, ''))}</a>`
+        ? `<a class="side-link side-link-web" href="${escapeHtml(item.website)}" target="_blank" rel="noopener">
+             <span class="side-link-label">Web</span>
+             <span class="side-link-value">${escapeHtml((item.website || '').replace(/^https?:\/\//, '').replace(/\/$/, ''))}</span>
+             <span class="side-link-arrow">↗</span>
+           </a>`
         : '';
       const authorCard = `
         <div class="side-card author-card">
@@ -680,7 +706,12 @@
           </div>
         </div>` : '';
 
-      // AI score card
+      // AI score card — includes a deep-link to the full rankings page so
+      // visitors can jump from "this one got a 78/B+" to "how does that
+      // stack up against every other agent in the category?"
+      const rankingsHref = item.category
+        ? `/rankings?category=${encodeURIComponent(item.category)}`
+        : '/rankings';
       const aiCard = hasAiScore ? `
         <div class="side-card ai-card">
           <h3>AI Score</h3>
@@ -692,11 +723,15 @@
             </div>
           </div>
           ${item.featured && item.featured_reason ? `<p class="ai-featured muted">★ ${escapeHtml(item.featured_reason)}</p>` : ''}
+          <a class="ai-rankings-link" href="${rankingsHref}">
+            See ${item.category ? escapeHtml(item.category) + ' ' : ''}rankings ↗
+          </a>
         </div>` : '';
 
-      // Build profile card (satisfaction, complexity, etc.)
+      // Build profile card (complexity, tiers, etc.). Satisfaction lived
+      // here as a row of dots — removed, since it looked like a UI control
+      // rather than data and confused visitors.
       const buildBody = hasBuildDetails ? `
-        ${item.satisfaction ? `<div class="side-kv"><span class="side-kv-label">Satisfaction</span><span class="side-kv-value sat-dots" title="${item.satisfaction} / 5">${satisfactionDots(item.satisfaction)}</span></div>` : ''}
         ${sideKv('Automation', humanize(item.automation_level))}
         ${sideKv('Complexity', humanize(item.complexity_tier))}
         ${sideKv('Time to build', humanize(item.time_to_build))}
@@ -740,12 +775,58 @@
       const tagsBody = hasTags ? sideChipList(item.tags) : '';
       const tagsCard = sideCard('Tags', tagsBody);
 
+      // ---------- gallery (secondary images, max 5) ----------
+      // Author can add screenshots of the dashboard / terminal / output
+      // from the detail page once posted. Stored as a JSON array on the
+      // submission; mutated via PATCH gallery_add / gallery_remove.
+      const GALLERY_MAX = 5;
+      const galleryList = Array.isArray(item.gallery) ? item.gallery : [];
+      const isAuthor = !!item.is_author;
+      const galleryItemsHtml = galleryList.map((url, idx) => `
+        <figure class="gallery-item">
+          <img src="${escapeHtml(url)}" alt="Gallery image ${idx + 1}"
+               loading="lazy" referrerpolicy="no-referrer" />
+          ${isAuthor ? `
+          <button class="gallery-remove" type="button"
+                  data-gallery-url="${escapeHtml(url)}"
+                  title="Remove from gallery">×</button>` : ''}
+        </figure>`).join('');
+      const galleryAddSlotHtml = isAuthor && galleryList.length < GALLERY_MAX ? `
+        <label class="gallery-add" for="gallery-upload-${item.id}">
+          <input type="file" id="gallery-upload-${item.id}" class="gallery-upload"
+                 accept="image/png,image/jpeg,image/webp,image/gif" hidden />
+          <div class="gallery-add-inner">
+            <span class="gallery-add-icon">+</span>
+            <span class="gallery-add-label">
+              Add image<br>
+              <span class="muted">${GALLERY_MAX - galleryList.length} slot${GALLERY_MAX - galleryList.length === 1 ? '' : 's'} left</span>
+            </span>
+          </div>
+          <div class="gallery-add-status muted"></div>
+        </label>` : '';
+      const hasGallerySection = galleryList.length > 0 || isAuthor;
+      const gallerySectionHtml = hasGallerySection ? `
+        <section class="detail-section gallery-section">
+          <h2>Gallery${galleryList.length ? ` <span class="tab-badge">${galleryList.length}/${GALLERY_MAX}</span>` : ''}</h2>
+          ${galleryList.length === 0 && isAuthor
+            ? `<p class="muted gallery-empty">Show off what you built — upload screenshots of the dashboard, terminal output, Telegram chat, whatever is most visual. Up to ${GALLERY_MAX} images.</p>`
+            : ''}
+          <div class="gallery-grid">
+            ${galleryItemsHtml}
+            ${galleryAddSlotHtml}
+          </div>
+        </section>` : '';
+
       // ---------- build the main overview panel ----------
+      // No more tabs — story + gotchas + gallery + updates all live in one
+      // long scrollable column so the detail page reads like an article,
+      // not a SaaS dashboard. The image_prompt section is gone entirely —
+      // the prompt is stored for re-gen but not surfaced to visitors.
       const overviewPanel = `
         <div class="overview-panel">
           <section class="detail-section">
             <h2>The story</h2>
-            <p class="detail-story">${escapeHtml(item.story || item.description || '')}</p>
+            <p class="detail-story">${formatStory(item.story || item.description || '')}</p>
           </section>
 
           ${hasGotchas ? `
@@ -756,12 +837,12 @@
             </ul>
           </section>` : ''}
 
-          ${item.image_prompt ? `
-          <section class="detail-section">
-            <h2>Image prompt</h2>
-            <p class="muted">This hero image was generated by the agent itself from this prompt:</p>
-            <pre class="image-prompt">${escapeHtml(item.image_prompt)}</pre>
-          </section>` : ''}
+          ${gallerySectionHtml}
+
+          <section class="detail-section updates-section">
+            <h2>Updates${updateCount ? ` <span class="tab-badge">${updateCount}</span>` : ''}</h2>
+            ${renderUpdatesPanel(item)}
+          </section>
         </div>`;
 
       root.innerHTML = `
@@ -786,14 +867,7 @@
           </aside>
 
           <div class="detail-main">
-            <div class="detail-tabs" role="tablist">
-              <button class="d-tab active" type="button" data-tab="overview" role="tab">Overview</button>
-              <button class="d-tab" type="button" data-tab="updates" role="tab">
-                Updates${updateCount ? `<span class="tab-badge">${updateCount}</span>` : ''}
-              </button>
-            </div>
-            <div class="tab-panel" data-panel="overview">${overviewPanel}</div>
-            <div class="tab-panel hidden" data-panel="updates">${renderUpdatesPanel(item)}</div>
+            ${overviewPanel}
           </div>
 
           <aside class="detail-side detail-side-right">
@@ -805,17 +879,6 @@
         </div>
       `;
 
-      // Wire up tab switching
-      const tabs = root.querySelectorAll('.d-tab');
-      const panels = root.querySelectorAll('.tab-panel');
-      tabs.forEach((tab) => {
-        tab.addEventListener('click', () => {
-          const target = tab.dataset.tab;
-          tabs.forEach((t) => t.classList.toggle('active', t === tab));
-          panels.forEach((p) => p.classList.toggle('hidden', p.dataset.panel !== target));
-        });
-      });
-
       const likeBtn = root.querySelector('.like-btn');
       if (likeBtn) {
         likeBtn.addEventListener('click', (e) => {
@@ -823,6 +886,92 @@
           toggleLike(Number(likeBtn.dataset.id), likeBtn);
         });
       }
+
+      // ---------- gallery: author upload + remove ----------
+      // Author clicks the "+ Add image" slot, picks a file, we base64 it,
+      // POST /api/uploads to get a /u/<hash>.webp URL, then PATCH the
+      // submission with gallery_add + the delete token. On success we
+      // re-render the whole detail page so the new image shows.
+      const galleryUpload = root.querySelector('.gallery-upload');
+      if (galleryUpload) {
+        galleryUpload.addEventListener('change', async (e) => {
+          const file = e.target.files && e.target.files[0];
+          if (!file) return;
+          const statusEl = root.querySelector('.gallery-add-status');
+          const setStatus = (msg) => { if (statusEl) statusEl.textContent = msg; };
+          if (file.size > 5 * 1024 * 1024) {
+            setStatus('file too big — 5 MB max.');
+            return;
+          }
+          setStatus('uploading…');
+          try {
+            const b64 = await new Promise((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = () => {
+                // Strip the "data:<mime>;base64," prefix.
+                const s = String(reader.result || '');
+                const comma = s.indexOf(',');
+                resolve(comma >= 0 ? s.slice(comma + 1) : s);
+              };
+              reader.onerror = () => reject(reader.error);
+              reader.readAsDataURL(file);
+            });
+            const up = await fetch('/api/uploads', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ data: b64, mime: file.type }),
+            });
+            if (!up.ok) {
+              const { error } = await up.json().catch(() => ({}));
+              throw new Error(error || 'upload failed');
+            }
+            const { url } = await up.json();
+            const patch = await fetch(`/api/submissions/${id}`, {
+              method: 'PATCH',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ token: deleteToken, gallery_add: url }),
+            });
+            if (!patch.ok) {
+              const { error } = await patch.json().catch(() => ({}));
+              throw new Error(error || 'patch failed');
+            }
+            const updated = await patch.json();
+            // Re-render with the fresh submission payload so the new image
+            // appears and slot count decrements. is_author isn't returned
+            // from PATCH, so carry it forward from the prior render.
+            updated.is_author = true;
+            render(updated);
+          } catch (err) {
+            setStatus(String(err && err.message ? err.message : 'upload failed'));
+          }
+        });
+      }
+      root.querySelectorAll('.gallery-remove').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const url = btn.getAttribute('data-gallery-url');
+          if (!url) return;
+          const ok = window.confirm('Remove this image from the gallery?');
+          if (!ok) return;
+          btn.disabled = true;
+          try {
+            const res = await fetch(`/api/submissions/${id}`, {
+              method: 'PATCH',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ token: deleteToken, gallery_remove: url }),
+            });
+            if (!res.ok) {
+              const { error } = await res.json().catch(() => ({}));
+              throw new Error(error || 'remove failed');
+            }
+            const updated = await res.json();
+            updated.is_author = true;
+            render(updated);
+          } catch (err) {
+            btn.disabled = false;
+            alert(String(err && err.message ? err.message : 'remove failed'));
+          }
+        });
+      });
 
       // Delete button — only present when the author has a delete token.
       const deleteBtn = root.querySelector('.delete-btn');

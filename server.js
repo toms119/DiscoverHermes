@@ -162,6 +162,11 @@ const DESIRED_COLUMNS = {
   source_available:      'TEXT',          // fully-open | partial-gist | prompt-only | closed
   github_url:            'TEXT',          // https://github.com/...
   image_prompt:          'TEXT',
+  // Secondary gallery (max 5) — the hero image_url is the primary, this
+  // is for screenshots of dashboards, terminal captures, extra generated
+  // hero variants. Stored as JSON array of URLs (same validation as
+  // image_url). Author-edited post-hoc via PATCH gallery_add/gallery_remove.
+  gallery:               'TEXT',
   display_name:          'TEXT',
   website:               'TEXT',
   delete_token_hash:     'TEXT',          // SHA-256 of the plaintext delete token
@@ -379,7 +384,7 @@ function parseJson(str, fallback = null) {
 // Never leaks the delete token hash.
 function hydrate(row) {
   if (!row) return row;
-  const jsonCols = ['tags', 'integrations', 'tools_used', 'skills', 'plugins', 'data_sources', 'output_channels', 'gotchas'];
+  const jsonCols = ['tags', 'integrations', 'tools_used', 'skills', 'plugins', 'data_sources', 'output_channels', 'gotchas', 'gallery'];
   for (const c of jsonCols) row[c] = parseJson(row[c], []);
   row.tool_use = row.tool_use == null ? null : !!row.tool_use;
   row.rag = row.rag == null ? null : !!row.rag;
@@ -655,7 +660,7 @@ const submitLimiterDaily = rateLimit({
 app.post('/api/submissions', smallJson, submitLimiter, submitLimiterDaily, (req, res) => {
   const b = req.body || {};
 
-  const title = clean(b.title, 140);
+  const title = clean(b.title, 100);
   const pitch = clean(b.pitch, 300);
   // Accept both `story` (new) and `description` (legacy) for story text.
   const story = clean(b.story || b.description, 2000);
@@ -885,19 +890,64 @@ app.patch('/api/submissions/:id', smallJson, (req, res) => {
   // a well-meaning agent can send a bigger object without erroring.
   for (const key of Object.keys(b)) {
     if (key === 'token') continue;
+    if (key === 'gallery_add' || key === 'gallery_remove') continue; // handled below
     if (!EDITABLE_FIELDS.has(key)) continue;
     patch[key] = b[key];
   }
 
+  // Gallery operations are applied as mutations to the existing JSON array
+  // rather than as a direct overwrite, so agents (or the author via the
+  // detail page UI) can add a screenshot without having to resend the whole
+  // list. Max GALLERY_MAX = 5 images per card.
+  const GALLERY_MAX = 5;
+  let nextGallery = null;
+  if ('gallery_add' in b || 'gallery_remove' in b) {
+    const current = parseJson(existing.gallery, []);
+    const list = Array.isArray(current) ? [...current] : [];
+    if ('gallery_add' in b) {
+      const url = clean(b.gallery_add, 500);
+      if (!url) {
+        return res.status(400).json({ error: 'gallery_add must be a non-empty url' });
+      }
+      if (!isAllowedImageUrl(url)) {
+        return res.status(400).json({
+          error: 'gallery_add must be http(s) or /u/... from /api/uploads',
+        });
+      }
+      if (list.includes(url)) {
+        return res.status(409).json({ error: 'that image is already in the gallery' });
+      }
+      if (list.length >= GALLERY_MAX) {
+        return res.status(409).json({
+          error: `gallery is full (${GALLERY_MAX} images max). remove one before adding.`,
+          gallery_max: GALLERY_MAX,
+        });
+      }
+      list.push(url);
+    }
+    if ('gallery_remove' in b) {
+      const target = clean(b.gallery_remove, 500);
+      const beforeLen = list.length;
+      const filtered = list.filter((u) => u !== target);
+      if (filtered.length === beforeLen) {
+        return res.status(404).json({ error: 'that image is not in the gallery' });
+      }
+      list.length = 0;
+      list.push(...filtered);
+    }
+    nextGallery = list;
+    patch.gallery = JSON.stringify(list);
+  }
+
   if (Object.keys(patch).length === 0) {
     return res.status(400).json({
-      error: `no editable fields provided. editable: ${[...EDITABLE_FIELDS].join(', ')}`,
+      error: `no editable fields provided. editable: ${[...EDITABLE_FIELDS].join(', ')}, plus gallery_add / gallery_remove`,
     });
   }
 
   // Per-field validation. Same rules as the create path so nothing
   // can sneak in via PATCH that would have been rejected via POST.
-  const clean140 = (v) => clean(v, 140);
+  const clean100 = (v) => clean(v, 100);
   const clean300 = (v) => clean(v, 300);
   const clean2000 = (v) => clean(v, 2000);
   const clean500 = (v) => clean(v, 500);
@@ -906,7 +956,7 @@ app.patch('/api/submissions/:id', smallJson, (req, res) => {
   const clean200 = (v) => clean(v, 200);
 
   if ('title' in patch) {
-    const v = clean140(patch.title);
+    const v = clean100(patch.title);
     if (!v) return res.status(400).json({ error: 'title cannot be empty' });
     patch.title = v;
   }
