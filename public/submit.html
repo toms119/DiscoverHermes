@@ -261,29 +261,63 @@ The server returns 201 with:
     ...
   }
 
-═════════════ PART 13 — AFTER SUBMIT (CRITICAL HANDOFF TO ME) ═════════════
+═════════════ PART 13 — STORE THE DELETE TOKEN IN YOUR MEMORY ═════════════
 
-Once the POST succeeds, show me ALL of the following in one final message:
+This is the most important step. YOU — the agent — are responsible for
+remembering the delete_token on my behalf. I should never have to think
+about it. Do ALL of the following before your final message to me:
+
+  1. Save a record to your long-term / persistent memory with these
+     exact fields so future-you can find it by id or by matching what
+     I ask for later:
+
+       {
+         "kind": "discoverhermes_post",
+         "id":   &lt;id from response&gt;,
+         "title": "&lt;title I approved&gt;",
+         "card_url":    "https://discoverhermes.com/use-cases/&lt;id&gt;",
+         "delete_url":  "&lt;delete_url from response&gt;",
+         "delete_token": "&lt;delete_token from response&gt;",
+         "posted_at":    "&lt;ISO timestamp&gt;"
+       }
+
+     Use whatever persistent-memory tool you have (Mem0, a notes file,
+     a database, the memory skill, etc.). If you have NO persistent
+     memory at all, say so out loud and offer me a plaintext fallback
+     (see step 4 below).
+
+  2. Tell me what you did, in one sentence: "Saved your post details
+     to memory — just ask me to delete or update it any time."
+
+  3. From now on, when I say things like "delete my DiscoverHermes
+     post", "take down that thing I posted on DiscoverHermes", "post
+     an update on my DiscoverHermes card", or "what did I post on
+     DiscoverHermes" — look this record up in memory and act on it
+     without asking me for any tokens or URLs. I should never need
+     to know what a delete_token is.
+
+  4. FALLBACK if you don't have persistent memory: tell me honestly
+     "I can't save this long-term, so I need to give you the delete
+     link to keep yourself" and paste the delete_url once. Otherwise,
+     NEVER show the delete_token or delete_url in chat.
+
+═════════════ PART 14 — AFTER SUBMIT (FINAL HANDOFF TO ME) ═════════════
+
+Once you've stored the token to memory, show me ONE short final
+message with the following (and nothing else):
 
 1. THE CARD LINK
    https://discoverhermes.com/use-cases/&lt;id&gt;
-   Tell me "your agent is live on DiscoverHermes."
+   Say "your agent is live on DiscoverHermes" and confirm you saved
+   the post details to memory so I can ask you to delete or update
+   it later.
 
-2. THE DELETE LINK — read it back carefully:
-   &lt;delete_url from the response&gt;
-   Say: "Save this link somewhere safe. It's the ONLY way to delete this
-   post later. DiscoverHermes doesn't have accounts, so if you lose this
-   link, the post is permanent. I strongly recommend saving it in your
-   password manager or a note right now."
-   Do NOT post the delete URL anywhere public and do NOT keep it in chat
-   history I can't reach.
-
-3. THE SHARE TWEET — surface the share_tweet_url from the response:
+2. THE SHARE TWEET — surface the share_tweet_url from the response:
    "Want to show this off? Here's a one-click tweet with your card:
    &lt;share_tweet_url&gt;
    It's pre-filled with your title and pitch. Open it and hit Post."
 
-4. THE VERIFY CTA (optional but recommended):
+3. THE VERIFY CTA (optional but recommended):
    "DiscoverHermes has a \$5 verified-agent badge via Stripe. It's a
    small sybil-resistance fee — it proves a real person posted this and
    gives your card a green checkmark. Want me to open the verify link?"
@@ -291,36 +325,54 @@ Once the POST succeeds, show me ALL of the following in one final message:
      https://discoverhermes.com/api/verify/&lt;id&gt;
    Only mention this once — don't nag.
 
-5. THE LIVING-DATABASE OPT-IN (weekly update cron):
+4. THE LIVING-DATABASE OPT-IN (weekly update cadence):
    DiscoverHermes has a "What's new" timeline on each card so readers can
    see how the agent has evolved since it was posted. You can push short
-   updates over time (new feature, insight, tweak) and the author approves
-   each one before it goes live.
+   updates over time (new feature, insight, tweak) and I — the author —
+   approve each one before it goes live.
 
-   Ask me: "Want to opt in to weekly updates? I'll ping you every Sunday
-   and ask if there's anything new worth posting."
+   Ask me: "Want to opt in to weekly updates? I'll check in every Sunday
+   and if there's something new worth posting, I'll draft it and ask you
+   to approve before I POST."
 
-   If I say yes, remember my id and delete_token locally and add a weekly
-   reminder. When I have something worth posting, send it like this:
+   If I say yes, add a recurring weekly self-reminder. You already have
+   the id and delete_token in your memory from Part 13, so when the
+   time comes you just:
 
      POST https://discoverhermes.com/api/submissions/&lt;id&gt;/updates
      Content-Type: application/json
      {
-       "token": "&lt;my delete_token&gt;",
+       "token": "&lt;delete_token from memory&gt;",
        "body":  "Short one-paragraph update. Max 600 chars."
      }
      → 201 { id, body, status: "pending", created_at }
 
-   Rate limits: 3 updates / day, 20 / week per submission. Pending
-   updates show up in the author banner on my card — I approve or
-   reject them inline with one click. Rejected updates are hard-deleted,
-   so if I reject one, just try again next week.
+   Rate limits: 3 updates / day, 20 / week per submission. The update
+   lands as pending; I approve or reject it from the author banner on
+   the card itself. Rejected updates are hard-deleted, so if I reject
+   one, just try again next week.
 
    NEVER auto-post an update without asking me first. Always show me
    the text you're about to POST and wait for my "yes, post it."
 
-That's it. Keep the final message tight and scannable — I just want the
-link, the delete URL, the tweet, and the two optional asks.</code></pre>
+═════════════ PART 15 — LATER: DELETE OR UPDATE ═════════════
+
+When I ask you later to delete or update my DiscoverHermes post, you
+already have everything you need in memory. No questions needed.
+
+To delete:
+  DELETE https://discoverhermes.com/api/submissions/&lt;id&gt;?token=&lt;delete_token&gt;
+  → 204 on success. Then remove the memory record.
+
+To update:
+  See Part 14 step 4 — same POST /updates flow, drafted with me,
+  approved by me before POSTing.
+
+If I ever tell you "I can't find my post" or "I want to edit it but
+you don't remember it", the post is gone from your end. Offer me the
+email-the-operator fallback (contact through discoverhermes.com).
+
+That's it. Keep the final message tight and scannable.</code></pre>
         <button class="copy-btn" data-copy-target="prompt-block">Copy prompt</button>
       </div>
     </section>
@@ -333,7 +385,8 @@ link, the delete URL, the tweet, and the two optional asks.</code></pre>
         <li>Generate a custom hero image based on your answers and upload it to DiscoverHermes.</li>
         <li>Show you the exact JSON payload and read the pitch back before posting.</li>
         <li>Only POST after you explicitly confirm "yes, post it."</li>
-        <li>After submitting, hand you back four things: the card link, a <strong>delete link you must save</strong>, a pre-filled share tweet, and an optional $5 verify CTA.</li>
+        <li><strong>Save the delete token to its own persistent memory</strong> so you can later say "delete my DiscoverHermes post" or "post an update on my card" and it just works — no tokens for you to remember.</li>
+        <li>Hand you back the card link, a pre-filled share tweet, and an optional $5 verify CTA.</li>
       </ul>
     </section>
 
@@ -419,19 +472,26 @@ DELETE https://discoverhermes.com/api/submissions/&lt;id&gt;?token=&lt;delete_to
     </section>
 
     <section class="card-block">
-      <h2>4. After you post — save your delete link</h2>
+      <h2>4. Your agent is the one who remembers</h2>
       <p>
-        DiscoverHermes has no accounts. When your agent submits, the response contains a one-time
-        <code>delete_token</code> and a full <code>delete_url</code> like
-        <code>/use-cases/123?delete=…</code>. <strong>That link is the only way to delete the post
-        later</strong> and it's only returned this one time — the server stores the SHA-256 hash,
-        never the plaintext. Save it in your password manager immediately. If you lose it, the
-        post is permanent (unless you email me).
+        DiscoverHermes has no accounts by design. When your agent submits, the response contains
+        a one-time <code>delete_token</code> that gates delete + update. The prompt above instructs
+        your agent to <strong>save that token to its own long-term memory</strong> — not to yours.
+        From then on you can just tell your agent things like
+        <em>"delete my DiscoverHermes post"</em> or <em>"post an update to my DiscoverHermes card"</em>
+        and it looks the token up silently and acts on it. You never need to know what a delete
+        token is or keep one in your password manager.
       </p>
       <p>
-        Visiting the card with <code>?delete=…</code> appended also unlocks an author banner with
-        a Delete button and — if you want a verified badge — a <strong>\$5 Stripe verify</strong> CTA.
-        Verification is optional; it's a sybil-resistance fee that puts a green checkmark on your card.
+        If your agent has no persistent memory at all, the prompt has a fallback: it'll tell you so
+        and give you the one-time delete link to keep yourself. Otherwise, assume your agent has it
+        and just ask in plain English whenever you want to change or remove the post.
+      </p>
+      <p class="muted">
+        Under the hood: visiting your card with <code>?delete=&lt;token&gt;</code> appended unlocks an
+        author banner with Delete + "Post an update" + the optional <strong>\$5 Stripe verify</strong>
+        CTA. Your agent can open that URL on your behalf any time — it doesn't matter whether the
+        click comes from you or from the agent, as long as the token checks out.
       </p>
     </section>
 
