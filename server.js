@@ -1004,8 +1004,25 @@ app.post('/api/submissions/:id/like', smallJson, likeLimiter, (req, res) => {
 
 // ---------- meta: taxonomy ----------
 app.get('/api/meta', (_req, res) => {
+  // Per-category counts so the feed can hide empty buckets and only show
+  // pills for categories that actually have agents. Ordered by the canonical
+  // CATEGORIES list so the UI order stays stable instead of jumping around
+  // as counts change.
+  const rawCounts = db.prepare(
+    `SELECT category, COUNT(*) AS n
+     FROM submissions
+     WHERE approved = 1 AND category IS NOT NULL AND category != ''
+     GROUP BY category`
+  ).all();
+  const countMap = Object.fromEntries(rawCounts.map((r) => [r.category, r.n]));
+  const categoryCounts = CATEGORIES
+    .map((name) => ({ name, count: countMap[name] || 0 }))
+    .filter((c) => c.count > 0);
+
   res.json({
     categories: CATEGORIES,
+    // Populated categories only, with counts. Client renders this.
+    category_counts: categoryCounts,
     deployments: [...DEPLOYMENTS],
     triggers: [...TRIGGERS],
     memory_types: [...MEMORY_TYPES],

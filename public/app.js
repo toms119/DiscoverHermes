@@ -313,19 +313,67 @@
       });
     }
 
-    // Category pills — populated from /api/meta
+    // Category pills — populated from /api/meta. Only categories that
+    // actually have submissions show up, so empty buckets don't clutter
+    // the feed. When there are more than 6 populated categories, the
+    // overflow tucks behind a "More ↓" toggle.
     const catRow = document.getElementById('category-filters');
+    const VISIBLE_CAP = 6;
     fetch('/api/meta').then((r) => r.json()).then((meta) => {
-      meta.categories.forEach((cat) => {
+      const populated = Array.isArray(meta.category_counts) ? meta.category_counts : [];
+      // Hide the whole row if nothing is populated yet — no point rendering
+      // just an "All" pill with nothing to filter to.
+      if (populated.length === 0) {
+        catRow.style.display = 'none';
+        return;
+      }
+
+      function makePill(name, count, cls = 'pill') {
         const btn = document.createElement('button');
-        btn.className = 'pill';
-        btn.dataset.category = cat;
-        btn.textContent = cat;
-        catRow.appendChild(btn);
-      });
+        btn.className = cls;
+        btn.dataset.category = name || '';
+        btn.innerHTML = name
+          ? `${escapeHtml(name)}<span class="pill-count">${count}</span>`
+          : 'All';
+        return btn;
+      }
+
+      // "All" is always first and always active on load.
+      const allBtn = makePill('', 0);
+      allBtn.classList.add('active');
+      catRow.appendChild(allBtn);
+
+      const visible = populated.slice(0, VISIBLE_CAP);
+      const overflow = populated.slice(VISIBLE_CAP);
+      visible.forEach((c) => catRow.appendChild(makePill(c.name, c.count)));
+
+      // Overflow toggle — only if there's something to hide.
+      if (overflow.length > 0) {
+        const moreBtn = document.createElement('button');
+        moreBtn.className = 'pill pill-more';
+        moreBtn.type = 'button';
+        moreBtn.textContent = `More (${overflow.length}) ↓`;
+        catRow.appendChild(moreBtn);
+
+        const hiddenPills = overflow.map((c) => {
+          const pill = makePill(c.name, c.count, 'pill pill-hidden');
+          catRow.appendChild(pill);
+          return pill;
+        });
+
+        moreBtn.addEventListener('click', () => {
+          const nowOpen = !moreBtn.classList.contains('open');
+          moreBtn.classList.toggle('open', nowOpen);
+          hiddenPills.forEach((p) => p.classList.toggle('pill-hidden', !nowOpen));
+          moreBtn.textContent = nowOpen
+            ? 'Less ↑'
+            : `More (${overflow.length}) ↓`;
+        });
+      }
+
       catRow.addEventListener('click', (e) => {
         const pill = e.target.closest('.pill');
-        if (!pill) return;
+        if (!pill || pill.classList.contains('pill-more')) return;
         catRow.querySelectorAll('.pill').forEach((p) => p.classList.remove('active'));
         pill.classList.add('active');
         state.category = pill.dataset.category;
