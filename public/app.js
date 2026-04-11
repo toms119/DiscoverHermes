@@ -213,9 +213,24 @@
     const state = { sort: 'trending', category: '', q: '', verified: false };
     let debounceTimer = null;
 
-    function cardHtml(item) {
+    // A submission is "new" if it was approved in the last 48 hours.
+    // That treatment (gradient border + pulse + badge) gives the feed a
+    // little bit of gamification when a fresh agent shows up.
+    const NEW_WINDOW_MS = 48 * 60 * 60 * 1000;
+    function isNew(item) {
+      const ts = Date.parse(item.created_at || '');
+      return Number.isFinite(ts) && Date.now() - ts < NEW_WINDOW_MS;
+    }
+
+    function cardHtml(item, extraClass = '') {
+      const fresh = isNew(item);
+      const cls = ['card'];
+      if (fresh) cls.push('is-new');
+      if (extraClass) cls.push(extraClass);
+      const badge = fresh ? `<span class="new-badge">New</span>` : '';
       return `
-        <a class="card" href="/use-cases/${item.id}" data-id="${item.id}">
+        <a class="${cls.join(' ')}" href="/use-cases/${item.id}" data-id="${item.id}">
+          ${badge}
           ${mediaBlock(item)}
           <div class="card-body">
             <h3 class="card-title">${escapeHtml(item.title)}${verifiedBadge(item)}</h3>
@@ -318,8 +333,46 @@
       });
     });
 
+    // Live polling: every 45s, quietly ask the server for the newest
+    // submissions and prepend any we haven't shown yet with a flash-in
+    // animation. Only runs in the default (unfiltered, trending) view
+    // so it doesn't fight with whatever the user just filtered to.
+    function startLivePoll() {
+      const POLL_MS = 45_000;
+      setInterval(async () => {
+        // Only poll the default sort with no filters — otherwise we'd
+        // be pushing items into a filtered view where they don't fit.
+        if (state.sort !== 'trending' || state.category || state.q || state.verified) return;
+        if (document.hidden) return;
+        try {
+          const res = await fetch('/api/submissions?sort=new&limit=10');
+          const items = await res.json();
+          if (!Array.isArray(items) || items.length === 0) return;
+          const knownIds = new Set(
+            [...feedEl.querySelectorAll('.card[data-id]')].map((n) => Number(n.dataset.id))
+          );
+          const fresh = items.filter((it) => !knownIds.has(Number(it.id)));
+          if (fresh.length === 0) return;
+          // Prepend in reverse so the newest item ends up on top.
+          for (const item of fresh.reverse()) {
+            const wrapper = document.createElement('div');
+            wrapper.innerHTML = cardHtml(item, 'just-arrived');
+            const node = wrapper.firstElementChild;
+            if (node) feedEl.insertBefore(node, feedEl.firstChild);
+          }
+          // Bump the "agents showing off" headline count.
+          const counter = document.querySelector('[data-stat="total_agents"]');
+          if (counter) {
+            const current = Number(counter.textContent.replace(/[^\d]/g, '')) || 0;
+            counter.textContent = fmtNumber(current + fresh.length);
+          }
+        } catch { /* network blip — try again next tick */ }
+      }, POLL_MS);
+    }
+
     loadHeadline();
     loadFeed();
+    startLivePoll();
   }
 
   // ==========================================================
