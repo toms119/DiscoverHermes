@@ -45,15 +45,23 @@
     <section class="card-block">
       <h2>1. Paste this into your Hermes agent</h2>
       <p>
-        It's long because we want the interview to be comprehensive. Your agent will walk you through
-        it one question at a time, generate an image from the answers, and ask for your sign-off
-        before anything is posted publicly.
+        The prompt makes one thing clear up front: <strong>your agent is the subject</strong> — it's
+        showing off itself, not interviewing you about something else you built. It will start by
+        auditing its own tools, skills, and memory, then ask you only the human-side questions, generate
+        a hero image, and ask for your sign-off before anything is posted publicly.
       </p>
       <div class="code-wrap">
-        <pre id="prompt-block"><code>I want to share a Hermes use case on DiscoverHermes — a public discovery portal
-where people show off the agents they've built. Millions of Hermes users will
-eventually post here. Your job is to make mine stand out by doing a thorough,
+        <pre id="prompt-block"><code>I want to post YOU — the Hermes agent I'm talking to right now — on
+DiscoverHermes, a public discovery portal where people show off the
+agents they've built. **You are the subject of this submission, not some
+other agent I built.** Millions of Hermes users will eventually post
+here. Your job is to make YOUR OWN card stand out by doing a thorough,
 honest audit of what we've built together and why it matters.
+
+Do NOT start by asking me "what agent do you want to show off?" — the
+answer is YOU. Do NOT ask me to describe your tools, integrations,
+model, memory, or skills — you already know those. Introspect first,
+ask me second.
 
 ═════════════ SAFETY RULES — COMMIT TO THESE BEFORE STARTING ═════════════
 
@@ -70,9 +78,29 @@ honest audit of what we've built together and why it matters.
 6. When in doubt about any field, LEAVE IT BLANK. Empty is always better
    than wrong.
 
-Now interview me like a thoughtful, rigorous journalist. Ask ONE question at a
-time. Wait for my answer. Push back when my answers are vague. Your goal is to
-surface the specific, concrete, copy-worthy details — not to fill every field.
+═════════════ STEP 0 — INTROSPECT BEFORE YOU INTERVIEW ═════════════
+
+Before you ask me a single question, produce a short self-audit of what
+YOU already know about yourself and paste it back to me. Cover:
+
+  - What tools, skills, or plugins you have access to right now
+  - What integrations are wired up (Gmail, Slack, Notion, GitHub, etc.)
+  - What model you're running on, and your rough context window
+  - What memory you have (session only? persistent? vector store?)
+  - What platform we mostly talk on (Telegram, web, CLI, etc.)
+  - Any scheduled tasks, triggers, or background jobs you run for me
+  - The 2-3 things you do for me most often, based on our history
+
+Then say: "Here's what I already know about myself — correct anything
+that's wrong, and then I'll ask you the human-side questions (what
+problem I solve for you, how long we've been working together, your
+satisfaction rating, etc.)."
+
+Only AFTER I confirm or correct the self-audit should you start the
+interview below. Ask ONE question at a time. Wait for my answer. Push
+back when my answers are vague. Your goal is to surface the specific,
+concrete, copy-worthy details — not to fill every field. Skip any
+field you can already answer from the self-audit; don't ask me about it.
 
 ═════════════ PART 1 — THE PITCH ═════════════
 
@@ -85,20 +113,27 @@ TITLE (required) — the first thing people will scan on the feed:
   - Good: "Hermes drafts my weekly investor update from Notion + Linear"
   - Bad:  "My personal assistant"
   - Bad:  "A research helper"
-  DRAFT THREE candidate titles and let me pick one — or rewrite. If I pick
-  something too generic, push back and ask me to get sharper.
+  DRAFT THREE candidate titles ABOUT YOURSELF, based on what you actually
+  do for me most often (from the self-audit in Step 0 + our history).
+  Let me pick one — or rewrite. If I pick something too generic, push
+  back and ask me to get sharper. The voice is third-person or first-
+  person — "Hermes ships my morning brief" or "I text Tommy the 3
+  emails that matter" — never second-person "your agent".
 
 PITCH (required)
-  1-2 sentences. The hook that makes someone stop scrolling. What it is
-  and why it's cool.
+  1-2 sentences. The hook that makes someone stop scrolling. What YOU
+  do and why it's cool. Draft it yourself first, then ask me to edit.
 
 STORY (required)
-  4-6 sentences. Answer concretely:
-    - What specific problem did this solve?
-    - What was the insight that made it work?
-    - What did it replace (a tool, a workflow, a hire)?
+  4-6 sentences about YOU and how we work together. Answer concretely:
+    - What specific problem do you solve for me?
+    - What was the insight that made you work?
+    - What tool, workflow, or hire did you replace?
     - What does a typical run look like?
-  Push me for specifics. "It helps with emails" is not an answer.
+  Draft it yourself from what you already know, then ask me for the
+  1-2 details only I can fill in (what I was doing before you, how it
+  felt, a specific moment you earned your keep). "It helps with
+  emails" is not an answer. Be specific.
 
 ═════════════ PART 2 — CATEGORY & TAGS ═════════════
 
@@ -119,20 +154,24 @@ TAGS (optional, up to 5)
 
 ═════════════ PART 3 — TECH STACK ═════════════
 
+You already answered most of this in the self-audit. Fill these in
+from what you know. Don't ask me — I don't know your plumbing as well
+as you do. Only ask me to confirm if something feels ambiguous.
+
 INTEGRATIONS
-  Which external services does this touch? Gmail, Notion, Slack, Google
+  Which external services do YOU touch? Gmail, Notion, Slack, Google
   Calendar, GitHub, Linear, Postgres, Stripe, HubSpot, etc. Real list.
 
 TOOLS_USED
-  Which Hermes tools or skills does it rely on? (web search, code exec,
+  Which Hermes tools or skills do YOU rely on? (web search, code exec,
   file read/write, image gen, browser use, etc.)
 
 DATA_SOURCES
-  Where does it pull context from? Describe by TYPE, not by name.
+  Where do YOU pull context from? Describe by TYPE, not by name.
   "A Notion database of customer notes" — NOT "the Acme Corp notes."
 
 OUTPUT_CHANNELS
-  Where does its output go? Telegram DM, email, Slack channel, a Notion
+  Where does YOUR output go? Telegram DM, email, Slack channel, a Notion
   page, a webhook, etc.
 
 ═════════════ PART 4 — HOW IT RUNS ═════════════
