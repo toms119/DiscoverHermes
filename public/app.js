@@ -368,6 +368,67 @@
         return '●'.repeat(v) + '○'.repeat(5 - v);
       }
 
+      // "Living database" timeline: approved updates are public, pending
+      // ones only come back from the API when the author's delete token
+      // was in the request. Shows an author-only "Post an update" form +
+      // inline approve/reject buttons for anything pending.
+      function fmtDate(iso) {
+        if (!iso) return '';
+        // SQLite datetime("now") returns "YYYY-MM-DD HH:MM:SS" (UTC)
+        const d = new Date(iso.replace(' ', 'T') + 'Z');
+        if (Number.isNaN(d.getTime())) return iso;
+        return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+      }
+      function renderUpdatesSection(it) {
+        const approved = Array.isArray(it.updates) ? it.updates : [];
+        const pending  = Array.isArray(it.pending_updates) ? it.pending_updates : [];
+        const isAuthor = !!it.is_author;
+        if (!approved.length && !pending.length && !isAuthor) return '';
+
+        const approvedHtml = approved.length
+          ? approved.map((u) => `
+              <li class="update-item">
+                <span class="update-date">${escapeHtml(fmtDate(u.approved_at || u.created_at))}</span>
+                <p class="update-body">${escapeHtml(u.body)}</p>
+              </li>`).join('')
+          : '<li class="update-empty muted">No updates yet. Check back — this agent is still evolving.</li>';
+
+        const pendingHtml = (isAuthor && pending.length)
+          ? `<div class="pending-block">
+               <h3>Pending your approval (${pending.length})</h3>
+               <ul class="update-list pending">
+                 ${pending.map((u) => `
+                   <li class="update-item pending" data-update-id="${u.id}">
+                     <span class="update-date">${escapeHtml(fmtDate(u.created_at))}</span>
+                     <p class="update-body">${escapeHtml(u.body)}</p>
+                     <div class="update-actions">
+                       <button class="approve-btn" type="button" data-update-id="${u.id}">Approve</button>
+                       <button class="reject-btn"  type="button" data-update-id="${u.id}">Reject</button>
+                     </div>
+                   </li>`).join('')}
+               </ul>
+             </div>`
+          : '';
+
+        const postForm = isAuthor
+          ? `<div class="post-update">
+               <h3>Post an update</h3>
+               <p class="muted">Short "what's new" — new feature, insight, or change. Human-approved (you) before it goes live.</p>
+               <textarea class="update-input" maxlength="600" rows="3" placeholder="e.g. Added a cost-watchdog step so the agent stops when my weekly API spend hits \$10."></textarea>
+               <button class="post-update-btn primary" type="button">Submit update</button>
+               <span class="post-update-status muted"></span>
+             </div>`
+          : '';
+
+        return `
+          <section class="detail-section updates-section">
+            <h2>What's new</h2>
+            <ul class="update-list">${approvedHtml}</ul>
+            ${pendingHtml}
+            ${postForm}
+          </section>`;
+      }
+
       // Author banner: shown only when ?delete=<token> is in the URL (the
       // author kept their delete link). Includes both the delete button and
       // the Stripe verify CTA if the submission isn't verified yet.
@@ -487,6 +548,8 @@
             </div>
           </section>` : ''}
 
+          ${renderUpdatesSection(item)}
+
           ${item.image_prompt ? `
           <section class="detail-section">
             <h2>Image prompt</h2>
@@ -529,12 +592,89 @@
           }
         });
       }
+
+      // Post-an-update form (author only).
+      const postBtn = root.querySelector('.post-update-btn');
+      if (postBtn) {
+        postBtn.addEventListener('click', async () => {
+          const textarea = root.querySelector('.update-input');
+          const statusEl = root.querySelector('.post-update-status');
+          const body = (textarea?.value || '').trim();
+          if (!body) {
+            statusEl.textContent = 'write something first';
+            return;
+          }
+          postBtn.disabled = true;
+          statusEl.textContent = 'posting…';
+          try {
+            const res = await fetch(`/api/submissions/${id}/updates`, {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ body, token: deleteToken }),
+            });
+            if (!res.ok) {
+              const { error } = await res.json().catch(() => ({}));
+              throw new Error(error || 'post failed');
+            }
+            statusEl.textContent = 'posted — pending your approval below.';
+            textarea.value = '';
+            // Re-fetch so the pending list updates.
+            setTimeout(() => location.reload(), 600);
+          } catch (err) {
+            statusEl.textContent = err.message || 'could not post';
+            postBtn.disabled = false;
+          }
+        });
+      }
+
+      // Approve / reject handlers for pending updates (author only).
+      async function actOnUpdate(updateId, action, btn) {
+        const li = btn.closest('.update-item');
+        if (li) li.classList.add('acting');
+        btn.disabled = true;
+        try {
+          const res = await fetch(
+            `/api/submissions/${id}/updates/${updateId}/action`,
+            {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ action, token: deleteToken }),
+            }
+          );
+          if (!res.ok) {
+            const { error } = await res.json().catch(() => ({}));
+            throw new Error(error || 'action failed');
+          }
+          // Easiest: refetch the page so both lists resync.
+          location.reload();
+        } catch (err) {
+          btn.disabled = false;
+          if (li) li.classList.remove('acting');
+          alert(err.message || 'could not update');
+        }
+      }
+      root.querySelectorAll('.approve-btn').forEach((btn) => {
+        btn.addEventListener('click', () =>
+          actOnUpdate(Number(btn.dataset.updateId), 'approve', btn)
+        );
+      });
+      root.querySelectorAll('.reject-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          if (!window.confirm('Reject this update? It will be deleted permanently.')) return;
+          actOnUpdate(Number(btn.dataset.updateId), 'reject', btn);
+        });
+      });
     }
 
     // Load /api/meta (verify price/enabled) in parallel with the submission so
     // the render call can show the verify button with the right copy.
+    // When the author has a delete token, we pass it to the submission
+    // endpoint so pending updates come back in the response.
+    const subUrl = deleteToken
+      ? `/api/submissions/${id}?token=${encodeURIComponent(deleteToken)}`
+      : `/api/submissions/${id}`;
     Promise.all([
-      fetch(`/api/submissions/${id}`).then((r) => (r.ok ? r.json() : Promise.reject())),
+      fetch(subUrl).then((r) => (r.ok ? r.json() : Promise.reject())),
       fetch('/api/meta').then((r) => r.json()).catch(() => ({})),
     ])
       .then(([item, meta]) => {

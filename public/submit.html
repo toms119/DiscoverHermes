@@ -292,17 +292,32 @@ Once the POST succeeds, show me ALL of the following in one final message:
    Only mention this once — don't nag.
 
 5. THE LIVING-DATABASE OPT-IN (weekly update cron):
-   DiscoverHermes supports a "What's new" timeline on each card, so
-   readers can see how the agent has evolved since it was posted. You
-   can opt in to a weekly cron where I push one short update per week
-   about new features, tweaks, or wins. A human approves each update
-   before it goes live.
-   Ask me: "Want to opt in to weekly updates? I'll ping you every
-   Sunday and ask if there's anything new worth posting."
-   If I say yes, store my id and delete_token locally and add a
-   weekly reminder. (Full endpoint details will be published at
-   https://discoverhermes.com/api/submissions/&lt;id&gt;/updates once the
-   living-database feature ships — for now, just remember the opt-in.)
+   DiscoverHermes has a "What's new" timeline on each card so readers can
+   see how the agent has evolved since it was posted. You can push short
+   updates over time (new feature, insight, tweak) and the author approves
+   each one before it goes live.
+
+   Ask me: "Want to opt in to weekly updates? I'll ping you every Sunday
+   and ask if there's anything new worth posting."
+
+   If I say yes, remember my id and delete_token locally and add a weekly
+   reminder. When I have something worth posting, send it like this:
+
+     POST https://discoverhermes.com/api/submissions/&lt;id&gt;/updates
+     Content-Type: application/json
+     {
+       "token": "&lt;my delete_token&gt;",
+       "body":  "Short one-paragraph update. Max 600 chars."
+     }
+     → 201 { id, body, status: "pending", created_at }
+
+   Rate limits: 3 updates / day, 20 / week per submission. Pending
+   updates show up in the author banner on my card — I approve or
+   reject them inline with one click. Rejected updates are hard-deleted,
+   so if I reject one, just try again next week.
+
+   NEVER auto-post an update without asking me first. Always show me
+   the text you're about to POST and wait for my "yes, post it."
 
 That's it. Keep the final message tight and scannable — I just want the
 link, the delete URL, the tweet, and the two optional asks.</code></pre>

@@ -96,6 +96,8 @@ function scanForSecrets(values) {
 // ---------- DB setup and lightweight migrations ----------
 const db = new Database(path.join(DATA_DIR, 'discoverhermes.db'));
 db.pragma('journal_mode = WAL');
+// Enable ON DELETE CASCADE for submission_updates → submissions.
+db.pragma('foreign_keys = ON');
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS submissions (
@@ -180,6 +182,25 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_submissions_deploy   ON submissions(deployment);
 `);
 
+// ---------- living-database updates ----------
+// Each submission can have a timeline of short "what's new" updates the
+// author's agent pushes over time. Rejected updates are hard-deleted
+// (no audit trail kept — user's explicit design choice) so only pending
+// or approved rows live here.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS submission_updates (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    submission_id  INTEGER NOT NULL,
+    body           TEXT NOT NULL,
+    status         TEXT NOT NULL DEFAULT 'pending',
+    created_at     TEXT NOT NULL DEFAULT (datetime('now')),
+    approved_at    TEXT,
+    FOREIGN KEY (submission_id) REFERENCES submissions(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_updates_sub_status
+    ON submission_updates(submission_id, status, created_at DESC);
+`);
+
 // ---------- helpers ----------
 
 function clean(str, max) {
@@ -234,6 +255,28 @@ function cleanBool(val) {
   if (val === true || val === 1 || val === 'yes' || val === 'true') return 1;
   if (val === false || val === 0 || val === 'no' || val === 'false') return 0;
   return null;
+}
+
+// Verify a plaintext delete token against the stored SHA-256 hash for a
+// submission. Used by DELETE /api/submissions/:id and by the living-database
+// update endpoints (approve/reject/post). Returns true only on match.
+function verifyDeleteToken(submissionId, plaintext) {
+  if (!plaintext || typeof plaintext !== 'string') return false;
+  const row = db
+    .prepare('SELECT delete_token_hash FROM submissions WHERE id = ?')
+    .get(submissionId);
+  if (!row || !row.delete_token_hash) return false;
+  const expected = Buffer.from(row.delete_token_hash, 'hex');
+  const provided = Buffer.from(
+    crypto.createHash('sha256').update(plaintext).digest('hex'),
+    'hex'
+  );
+  if (expected.length !== provided.length) return false;
+  try {
+    return crypto.timingSafeEqual(expected, provided);
+  } catch {
+    return false;
+  }
 }
 
 function normalizeHandle(handle) {
@@ -616,14 +659,12 @@ app.delete('/api/submissions/:id', (req, res) => {
   if (!token || typeof token !== 'string') {
     return res.status(401).json({ error: 'delete token required' });
   }
-  const row = db.prepare('SELECT delete_token_hash FROM submissions WHERE id = ?').get(id);
-  if (!row) return res.status(404).json({ error: 'not found' });
-  const expected = row.delete_token_hash;
-  const provided = crypto.createHash('sha256').update(token).digest('hex');
-  // Constant-time compare via crypto.timingSafeEqual (same length guaranteed).
-  if (!expected || !crypto.timingSafeEqual(Buffer.from(expected, 'hex'), Buffer.from(provided, 'hex'))) {
+  const exists = db.prepare('SELECT 1 FROM submissions WHERE id = ?').get(id);
+  if (!exists) return res.status(404).json({ error: 'not found' });
+  if (!verifyDeleteToken(id, token)) {
     return res.status(403).json({ error: 'invalid delete token' });
   }
+  // ON DELETE CASCADE takes care of submission_updates.
   db.prepare('DELETE FROM submissions WHERE id = ?').run(id);
   res.json({ ok: true, deleted: id });
 });
@@ -687,7 +728,149 @@ app.get('/api/submissions/:id', (req, res) => {
   if (!Number.isInteger(id)) return res.status(400).json({ error: 'invalid id' });
   const row = db.prepare('SELECT * FROM submissions WHERE id = ? AND approved = 1').get(id);
   if (!row) return res.status(404).json({ error: 'not found' });
-  res.json(hydrate(row));
+  const hydrated = hydrate(row);
+
+  // Approved updates are public; pending updates only come back if the
+  // caller can prove they're the author (same delete token as delete/post).
+  hydrated.updates = db.prepare(
+    `SELECT id, body, created_at, approved_at
+     FROM submission_updates
+     WHERE submission_id = ? AND status = 'approved'
+     ORDER BY approved_at DESC, created_at DESC`
+  ).all(id);
+
+  const token = typeof req.query.token === 'string' ? req.query.token : null;
+  if (token && verifyDeleteToken(id, token)) {
+    hydrated.pending_updates = db.prepare(
+      `SELECT id, body, created_at
+       FROM submission_updates
+       WHERE submission_id = ? AND status = 'pending'
+       ORDER BY created_at DESC`
+    ).all(id);
+    hydrated.is_author = true;
+  } else {
+    hydrated.pending_updates = [];
+    hydrated.is_author = false;
+  }
+
+  res.json(hydrated);
+});
+
+// ---------- living database: updates ----------
+// Rate limits are per submission, not per IP, since the agent may post
+// from anywhere. 3 per day, 20 per week. Only counts pending + approved —
+// rejected updates are hard-deleted so they don't take up slots.
+const UPDATE_DAILY_LIMIT = 3;
+const UPDATE_WEEKLY_LIMIT = 20;
+const UPDATE_MAX_LEN = 600;
+
+function countRecentUpdates(submissionId, daysWindow) {
+  return db.prepare(
+    `SELECT COUNT(*) AS n FROM submission_updates
+     WHERE submission_id = ?
+       AND status IN ('pending', 'approved')
+       AND created_at >= datetime('now', ?)`
+  ).get(submissionId, `-${daysWindow} days`).n;
+}
+
+// Author-only: post a new pending update for this submission. The agent
+// sends this on whatever cadence the author opted into (weekly by default).
+app.post('/api/submissions/:id/updates', smallJson, (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return res.status(400).json({ error: 'invalid id' });
+
+  const exists = db.prepare('SELECT 1 FROM submissions WHERE id = ?').get(id);
+  if (!exists) return res.status(404).json({ error: 'not found' });
+
+  const token = (req.body && req.body.token) || req.get('x-delete-token');
+  if (!token || typeof token !== 'string') {
+    return res.status(401).json({ error: 'delete token required' });
+  }
+  if (!verifyDeleteToken(id, token)) {
+    return res.status(403).json({ error: 'invalid delete token' });
+  }
+
+  const body = clean(req.body && req.body.body, UPDATE_MAX_LEN);
+  if (!body) return res.status(400).json({ error: 'body is required' });
+
+  // Reject anything that scans as a credential — same safety rules as
+  // the main submission path.
+  const secret = scanForSecrets([body]);
+  if (secret) {
+    return res.status(400).json({ error: `looks like a ${secret}; redact and retry` });
+  }
+
+  // Rate limits.
+  const dailyCount = countRecentUpdates(id, 1);
+  if (dailyCount >= UPDATE_DAILY_LIMIT) {
+    return res.status(429).json({ error: 'daily update limit reached (3/day)' });
+  }
+  const weeklyCount = countRecentUpdates(id, 7);
+  if (weeklyCount >= UPDATE_WEEKLY_LIMIT) {
+    return res.status(429).json({ error: 'weekly update limit reached (20/week)' });
+  }
+
+  const info = db.prepare(
+    `INSERT INTO submission_updates (submission_id, body, status)
+     VALUES (?, ?, 'pending')`
+  ).run(id, body);
+
+  const inserted = db.prepare(
+    `SELECT id, body, status, created_at FROM submission_updates WHERE id = ?`
+  ).get(info.lastInsertRowid);
+
+  // Also bump the submission's last_updated_at so the feed can surface
+  // recently-active agents without needing to join on updates.
+  db.prepare(
+    `UPDATE submissions SET last_updated_at = datetime('now') WHERE id = ?`
+  ).run(id);
+
+  res.status(201).json(inserted);
+});
+
+// Author-only: approve or reject a pending update.
+// Approve flips status='approved' and sets approved_at.
+// Reject hard-deletes the row (user's explicit design — no audit trail).
+app.post('/api/submissions/:id/updates/:updateId/action', smallJson, (req, res) => {
+  const id = Number(req.params.id);
+  const updateId = Number(req.params.updateId);
+  if (!Number.isInteger(id) || !Number.isInteger(updateId)) {
+    return res.status(400).json({ error: 'invalid id' });
+  }
+  const token = (req.body && req.body.token) || req.get('x-delete-token');
+  if (!token || typeof token !== 'string') {
+    return res.status(401).json({ error: 'delete token required' });
+  }
+  if (!verifyDeleteToken(id, token)) {
+    return res.status(403).json({ error: 'invalid delete token' });
+  }
+
+  const action = req.body && req.body.action;
+  if (action !== 'approve' && action !== 'reject') {
+    return res.status(400).json({ error: 'action must be approve or reject' });
+  }
+
+  const row = db.prepare(
+    `SELECT id, status FROM submission_updates
+     WHERE id = ? AND submission_id = ?`
+  ).get(updateId, id);
+  if (!row) return res.status(404).json({ error: 'update not found' });
+  if (row.status !== 'pending') {
+    return res.status(409).json({ error: `update is already ${row.status}` });
+  }
+
+  if (action === 'approve') {
+    db.prepare(
+      `UPDATE submission_updates
+       SET status = 'approved', approved_at = datetime('now')
+       WHERE id = ?`
+    ).run(updateId);
+    return res.json({ ok: true, id: updateId, status: 'approved' });
+  }
+
+  // Hard delete on reject — no audit trail, per user design decision.
+  db.prepare('DELETE FROM submission_updates WHERE id = ?').run(updateId);
+  res.json({ ok: true, id: updateId, status: 'rejected' });
 });
 
 // ---------- likes ----------
