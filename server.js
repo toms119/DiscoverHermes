@@ -1575,41 +1575,50 @@ app.post('/api/admin/github-stats', smallJson, async (req, res) => {
     return res.status(401).json({ error: 'unauthorized' });
   }
 
-  // Parse star-history.com page for stats
-  const fetch = (await import('node:fetch')).default;
-  const resp = await fetch('https://www.star-history.com/nousresearch/hermes-agent');
-  const html = await resp.text();
+  try {
+    // Fetch star-history page (use global fetch in Node 18+)
+    const resp = await fetch('https://www.star-history.com/nousresearch/hermes-agent', {
+      headers: { 'User-Agent': 'DiscoverHermes/1.0' }
+    });
+    if (!resp.ok) {
+      return res.status(502).json({ error: 'failed to fetch star-history', status: resp.status });
+    }
+    const html = await resp.text();
 
-  // Extract stats using regex
-  const starsMatch = html.match(/([\d.]+)k\s*Stars/);
-  const forksMatch = html.match(/([\d.]+)k\s*Forks/);
-  const contributorsMatch = html.match(/(\d+)\s*Contributors/);
-  const rankMatch = html.match(/Global Rank\s*#(\d+)/);
-  const weeklyStarsMatch = html.match(/New stars\s*\+?([\d.]+k)/);
-  const pushesMatch = html.match(/(\d+)\s*Pushes/);
-  const issuesMatch = html.match(/Issues closed\s*(\d+)/);
+    // Extract stats using regex
+    const starsMatch = html.match(/([\d.]+)k\s*Stars/);
+    const forksMatch = html.match(/([\d.]+)k\s*Forks/);
+    const contributorsMatch = html.match(/(\d+)\s*Contributors/);
+    const rankMatch = html.match(/Global Rank\s*#(\d+)/);
+    const weeklyStarsMatch = html.match(/New stars\s*\+?([\d.]+k)/);
+    const pushesMatch = html.match(/(\d+)\s*Pushes/);
+    const issuesMatch = html.match(/Issues closed\s*(\d+)/);
 
-  const parseK = (m) => m ? Math.round(parseFloat(m[1]) * 1000) : 0;
+    const parseK = (m) => m ? Math.round(parseFloat(m[1]) * 1000) : 0;
 
-  const stats = {
-    stars: parseK(starsMatch),
-    forks: parseK(forksMatch),
-    contributors: contributorsMatch ? parseInt(contributorsMatch[1]) : 0,
-    global_rank: rankMatch ? parseInt(rankMatch[1]) : null,
-    weekly_stars: parseK(weeklyStarsMatch),
-    weekly_pushes: pushesMatch ? parseInt(pushesMatch[1]) : 0,
-    weekly_issues_closed: issuesMatch ? parseInt(issuesMatch[1]) : 0,
-  };
+    const stats = {
+      stars: parseK(starsMatch),
+      forks: parseK(forksMatch),
+      contributors: contributorsMatch ? parseInt(contributorsMatch[1]) : 0,
+      global_rank: rankMatch ? parseInt(rankMatch[1]) : null,
+      weekly_stars: parseK(weeklyStarsMatch),
+      weekly_pushes: pushesMatch ? parseInt(pushesMatch[1]) : 0,
+      weekly_issues_closed: issuesMatch ? parseInt(issuesMatch[1]) : 0,
+    };
 
-  const today = new Date().toISOString().slice(0, 10);
-  db.prepare(`
-    INSERT OR REPLACE INTO github_stats
-      (date, stars, forks, contributors, global_rank, weekly_stars, weekly_pushes, weekly_issues_closed)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(today, stats.stars, stats.forks, stats.contributors, stats.global_rank,
-         stats.weekly_stars, stats.weekly_pushes, stats.weekly_issues_closed);
+    const today = new Date().toISOString().slice(0, 10);
+    db.prepare(`
+      INSERT OR REPLACE INTO github_stats
+        (date, stars, forks, contributors, global_rank, weekly_stars, weekly_pushes, weekly_issues_closed)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(today, stats.stars, stats.forks, stats.contributors, stats.global_rank,
+           stats.weekly_stars, stats.weekly_pushes, stats.weekly_issues_closed);
 
-  res.json({ ok: true, date: today, ...stats });
+    res.json({ ok: true, date: today, ...stats });
+  } catch (err) {
+    console.error('github-stats error:', err);
+    res.status(500).json({ error: 'internal error', message: err.message });
+  }
 });
 
 // ---------- author edits ----------
