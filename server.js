@@ -1346,6 +1346,79 @@ app.get('/api/stats', (_req, res) => {
   });
 });
 
+// ---------- author edits ----------
+// PATCH /api/submissions/:id — edit submission content
+// Uses delete token (author edits own) OR admin token (admin edits any)
+// Whitelisted fields: title, pitch, story, image_url, image_prompt, display_name, website
+app.patch('/api/submissions/:id', smallJson, (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return res.status(400).json({ error: 'invalid id' });
+
+  const row = db.prepare('SELECT 1 FROM submissions WHERE id = ?').get(id);
+  if (!row) return res.status(404).json({ error: 'not found' });
+
+  // Auth: delete token (author) OR admin token
+  const token = (req.body && req.body.token) || req.get('x-delete-token');
+  const adminToken = req.get('x-admin-token');
+
+  const authorizedByDelete = token && verifyDeleteToken(id, token);
+  const authorizedByAdmin = adminToken && adminToken === ADMIN_TOKEN;
+
+  if (!authorizedByDelete && !authorizedByAdmin) {
+    return res.status(403).json({ error: 'invalid delete token or unauthorized' });
+  }
+
+  const b = req.body || {};
+
+  // Whitelist of editable fields
+  const updates = {};
+  const now = new Date().toISOString();
+
+  if (typeof b.title === 'string' && b.title.trim()) {
+    updates.title = clean(b.title, 120);
+  }
+  if (typeof b.pitch === 'string') {
+    updates.pitch = clean(b.pitch, 500);
+  }
+  if (typeof b.story === 'string') {
+    updates.story = clean(b.story, 5000);
+  }
+  if (typeof b.image_url === 'string') {
+    updates.image_url = clean(b.image_url, 500);
+  }
+  if (typeof b.image_prompt === 'string') {
+    updates.image_prompt = clean(b.image_prompt, 1000);
+  }
+  if (typeof b.display_name === 'string') {
+    updates.display_name = clean(b.display_name, 60);
+  }
+  if (typeof b.website === 'string') {
+    const website = clean(b.website, 200);
+    updates.website = website && isHttpUrl(website) ? website : null;
+  }
+
+  // Always update last_updated_at when editing
+  updates.last_updated_at = now;
+
+  // Scan for secrets in all updated text fields
+  const secret = scanForSecrets(Object.values(updates));
+  if (secret) {
+    return res.status(400).json({ error: `looks like a ${secret}; redact and retry` });
+  }
+
+  if (Object.keys(updates).length === 1 && updates.last_updated_at) {
+    // Only timestamp update, nothing else changed
+    return res.status(400).json({ error: 'no valid fields to update' });
+  }
+
+  const setClauses = Object.keys(updates).map(k => `${k} = ?`).join(', ');
+  const values = Object.keys(updates).map(k => updates[k]);
+
+  db.prepare(`UPDATE submissions SET ${setClauses} WHERE id = ?`).run(...values, id);
+  const updated = db.prepare('SELECT * FROM submissions WHERE id = ?').get(id);
+  res.json(hydrate(updated));
+});
+
 // ---------- admin (token-gated) ----------
 app.post('/api/admin/submissions/:id/approve', smallJson, requireAdmin, (req, res) => {
   const id = Number(req.params.id);
