@@ -135,6 +135,10 @@
     return `<span class="handle">${escapeHtml(name)}</span>`;
   }
 
+  function verifiedBadge(item) {
+    return item.verified ? `<span class="verified-badge">Verified</span>` : '';
+  }
+
   function chipRow(item) {
     // Only the chips that actually exist — no empty slots.
     const chips = [];
@@ -167,7 +171,7 @@
         <a class="card" href="/use-cases/${item.id}" data-id="${item.id}">
           ${mediaBlock(item)}
           <div class="card-body">
-            <h3 class="card-title">${escapeHtml(item.title)}</h3>
+            <h3 class="card-title">${escapeHtml(item.title)}${verifiedBadge(item)}</h3>
             <p class="card-pitch">${escapeHtml(item.pitch || item.description || '')}</p>
             <div class="chip-row">${chipRow(item)}</div>
             <div class="card-foot">
@@ -304,21 +308,37 @@
         item.running_since || item.time_saved_per_week || item.runs_completed ||
         item.hours_used || item.approx_monthly_tokens;
 
-      const deleteBanner = deleteToken
-        ? `<div class="delete-banner">
-             <span>You have a delete token for this post.</span>
-             <button class="delete-btn" type="button">Delete this post</button>
-           </div>`
-        : '';
+      // Author banner: shown only when ?delete=<token> is in the URL (the
+      // author kept their delete link). Includes both the delete button and
+      // the Stripe verify CTA if the submission isn't verified yet.
+      let authorBanner = '';
+      if (deleteToken) {
+        const verifyBtn = item.verified || !window.__meta?.verify_enabled
+          ? ''
+          : `<a class="verify-btn" href="/api/verify/${item.id}">
+               Verify agent — $${window.__meta.verify_price_usd} + tax
+             </a>`;
+        const bannerText = item.verified
+          ? `<strong>You're the author.</strong> This post is verified. You can still delete it.`
+          : `<strong>You're the author.</strong> Save this link — it's the only way to delete this post later. Add a Verified badge for trust.`;
+        authorBanner = `
+          <div class="author-banner">
+            <div class="author-banner-text">${bannerText}</div>
+            <div class="author-banner-actions">
+              ${verifyBtn}
+              <button class="delete-btn" type="button">Delete post</button>
+            </div>
+          </div>`;
+      }
 
       root.innerHTML = `
         <article class="detail-article">
-          ${deleteBanner}
+          ${authorBanner}
           <div class="detail-media">${media}</div>
 
           <header class="detail-head">
             ${item.category ? `<span class="chip chip-category">${escapeHtml(item.category)}</span>` : ''}
-            <h1>${escapeHtml(item.title)}</h1>
+            <h1>${escapeHtml(item.title)}${verifiedBadge(item)}</h1>
             <p class="detail-pitch">${escapeHtml(item.pitch || '')}</p>
             <div class="detail-byline">
               ${handleBlock(item)}
@@ -391,11 +411,44 @@
           toggleLike(Number(likeBtn.dataset.id), likeBtn);
         });
       }
+
+      // Delete button — only present when the author has a delete token.
+      const deleteBtn = root.querySelector('.delete-btn');
+      if (deleteBtn) {
+        deleteBtn.addEventListener('click', async () => {
+          const ok = window.confirm(
+            'Delete this post permanently? This cannot be undone.'
+          );
+          if (!ok) return;
+          deleteBtn.disabled = true;
+          deleteBtn.textContent = 'Deleting…';
+          try {
+            const res = await fetch(
+              `/api/submissions/${id}?token=${encodeURIComponent(deleteToken)}`,
+              { method: 'DELETE' }
+            );
+            if (!res.ok) throw new Error('delete failed');
+            // Success → send the user back to the feed.
+            location.href = '/';
+          } catch {
+            deleteBtn.disabled = false;
+            deleteBtn.textContent = 'Delete post';
+            alert('Could not delete. Your delete token may be invalid.');
+          }
+        });
+      }
     }
 
-    fetch(`/api/submissions/${id}`)
-      .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then(render)
+    // Load /api/meta (verify price/enabled) in parallel with the submission so
+    // the render call can show the verify button with the right copy.
+    Promise.all([
+      fetch(`/api/submissions/${id}`).then((r) => (r.ok ? r.json() : Promise.reject())),
+      fetch('/api/meta').then((r) => r.json()).catch(() => ({})),
+    ])
+      .then(([item, meta]) => {
+        window.__meta = meta;
+        render(item);
+      })
       .catch(() => {
         root.innerHTML = `<div class="empty">Couldn't load this use case. It may have been removed.</div>`;
       });

@@ -643,6 +643,8 @@ app.get('/api/meta', (_req, res) => {
     deployments: [...DEPLOYMENTS],
     triggers: [...TRIGGERS],
     memory_types: [...MEMORY_TYPES],
+    verify_enabled: VERIFY_ENABLED,
+    verify_price_usd: VERIFY_PRICE_USD,
   });
 });
 

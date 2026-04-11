@@ -637,6 +637,98 @@ pre code { background: transparent; padding: 0; }
 }
 .copy-btn:hover { border-color: var(--accent); color: var(--accent); }
 
+/* ---------- verified badge ---------- */
+.verified-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px 3px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  background: linear-gradient(135deg, rgba(66,214,164,0.22), rgba(56,182,255,0.22));
+  color: #7de6bf;
+  border: 1px solid rgba(66,214,164,0.45);
+  white-space: nowrap;
+}
+.verified-badge::before {
+  content: "✓";
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 900;
+  width: 12px;
+  height: 12px;
+  line-height: 12px;
+  text-align: center;
+  border-radius: 999px;
+  background: #42d6a4;
+  color: #0b0e17;
+}
+.card-title .verified-badge {
+  margin-left: 6px;
+  transform: translateY(-1px);
+}
+.detail-head .verified-badge {
+  margin-left: 8px;
+  font-size: 12px;
+  padding: 4px 11px 4px 9px;
+}
+
+/* ---------- author banner: delete + verify ---------- */
+.author-banner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  margin: 0 0 18px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(255,122,89,0.10), rgba(124,92,255,0.10));
+  border: 1px solid rgba(255,122,89,0.35);
+  color: var(--text);
+  font-size: 13.5px;
+}
+.author-banner .author-banner-text {
+  flex: 1 1 260px;
+  line-height: 1.5;
+}
+.author-banner .author-banner-text strong { color: var(--accent-2); }
+.author-banner .author-banner-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.verify-btn,
+.delete-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 16px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+  border: 1px solid transparent;
+  cursor: pointer;
+  text-decoration: none;
+  transition: transform 0.08s ease, box-shadow 0.2s ease;
+}
+.verify-btn {
+  background: linear-gradient(135deg, #42d6a4, #38b6ff);
+  color: #0b0e17;
+  box-shadow: 0 6px 22px -10px rgba(66,214,164,0.75);
+}
+.verify-btn:hover { transform: translateY(-1px); }
+.delete-btn {
+  background: rgba(255,77,109,0.12);
+  color: #ff8599;
+  border-color: rgba(255,77,109,0.4);
+}
+.delete-btn:hover {
+  background: rgba(255,77,109,0.22);
+}
+
 /* ---------- footer ---------- */
 .site-footer {
   max-width: var(--maxw);
