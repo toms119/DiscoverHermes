@@ -23,6 +23,10 @@ const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || null;
 const STRIPE_PAYMENT_LINK   = process.env.STRIPE_PAYMENT_LINK   || null;
 const VERIFY_PRICE_USD      = Number(process.env.VERIFY_PRICE_USD) || 5;
 const VERIFY_ENABLED        = !!(STRIPE_WEBHOOK_SECRET && STRIPE_PAYMENT_LINK);
+
+// Canonical public URL for the portal (used in share links). Falls back to
+// the Railway domain if PUBLIC_URL isn't set. Always no trailing slash.
+const PUBLIC_URL = (process.env.PUBLIC_URL || 'https://discoverhermes.com').replace(/\/+$/, '');
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
@@ -53,6 +57,14 @@ const DEPLOYMENTS = new Set(['cloud', 'local', 'hybrid']);
 const TRIGGERS = new Set(['scheduled', 'event', 'on-demand', 'webhook', 'continuous']);
 const MEMORY_TYPES = new Set(['none', 'session', 'persistent', 'vector']);
 const COMPLEXITY_TIERS = new Set(['beginner', 'intermediate', 'advanced', 'expert']);
+// Schema v3 enums — pulled from the Hermes-agent audit. Keep these tight so
+// the stats page can aggregate cleanly instead of splintering into free text.
+const AUTOMATION_LEVELS   = new Set(['fully-autonomous', 'human-in-loop', 'on-demand-only']);
+const CONTEXT_TIERS       = new Set(['small', 'medium', 'large', 'massive']);
+const COST_TIERS          = new Set(['free', 'under-10', '10-50', '50-200', '200-plus']);
+const RELIABILITY_TIERS   = new Set(['high', 'medium', 'low', 'wip']);
+const SOURCE_AVAILABILITY = new Set(['fully-open', 'partial-gist', 'prompt-only', 'closed']);
+const TIME_TO_BUILD_TIERS = new Set(['under-an-hour', 'few-hours', 'weekend', 'week-plus', 'ongoing']);
 
 // ---------- safety scanner ----------
 // Hard-block patterns that look like credentials. We err on the side of
@@ -134,9 +146,16 @@ const DESIRED_COLUMNS = {
   last_updated_at:       'TEXT',          // set whenever a PATCH lands
   complexity_tier:       'TEXT',          // beginner | intermediate | advanced | expert
   gotchas:               'TEXT',          // JSON array of short bullets
-  time_to_build:         'TEXT',          // free-form: "2 hours", "a weekend"
+  time_to_build:         'TEXT',          // enum in TIME_TO_BUILD_TIERS
   satisfaction:          'INTEGER',       // 1..5
   source_url:            'TEXT',          // link to a public gist/pastebin
+  // v3: structured tier/enum fields for deeper filtering and charts
+  automation_level:      'TEXT',          // fully-autonomous | human-in-loop | on-demand-only
+  context_tier:          'TEXT',          // small | medium | large | massive
+  cost_tier:             'TEXT',          // free | under-10 | 10-50 | 50-200 | 200-plus
+  reliability:           'TEXT',          // high | medium | low | wip
+  source_available:      'TEXT',          // fully-open | partial-gist | prompt-only | closed
+  github_url:            'TEXT',          // https://github.com/...
   image_prompt:          'TEXT',
   display_name:          'TEXT',
   website:               'TEXT',
@@ -179,6 +198,30 @@ function cleanArray(val, maxItems, maxLen) {
     if (out.length >= maxItems) break;
   }
   return out.length ? out : null;
+}
+
+// Tags are free-form but we normalize aggressively at write time so the
+// same tag typed five different ways ("Morning Briefing" / "morning-briefing"
+// / "morningbriefing") collapses to one canonical form.
+function normalizeTag(raw) {
+  if (typeof raw !== 'string') return null;
+  const lowered = raw.toLowerCase().trim();
+  if (!lowered) return null;
+  // Collapse any run of non-alphanumeric chars to a single hyphen, strip edges.
+  const slug = lowered.replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  if (!slug || slug.length > 32) return slug ? slug.slice(0, 32) : null;
+  return slug;
+}
+
+function cleanTags(val, maxItems) {
+  if (!Array.isArray(val)) return null;
+  const out = [];
+  for (const item of val) {
+    const tag = normalizeTag(item);
+    if (tag && !out.includes(tag)) out.push(tag);
+    if (out.length >= maxItems) break;
+  }
+  return out;
 }
 
 function cleanInt(val, max) {
@@ -475,6 +518,17 @@ app.post('/api/submissions', smallJson, submitLimiter, (req, res) => {
   if (sourceUrl && !isHttpUrl(sourceUrl)) {
     return res.status(400).json({ error: 'source_url must be an http(s) URL' });
   }
+  // v3 enums — silently null out anything that doesn't match the closed list.
+  const automationLevel  = AUTOMATION_LEVELS.has(b.automation_level)   ? b.automation_level   : null;
+  const contextTier      = CONTEXT_TIERS.has(b.context_tier)           ? b.context_tier       : null;
+  const costTier         = COST_TIERS.has(b.cost_tier)                 ? b.cost_tier          : null;
+  const reliability      = RELIABILITY_TIERS.has(b.reliability)        ? b.reliability        : null;
+  const sourceAvailable  = SOURCE_AVAILABILITY.has(b.source_available) ? b.source_available   : null;
+  const timeToBuild      = TIME_TO_BUILD_TIERS.has(b.time_to_build)    ? b.time_to_build      : null;
+  const githubUrl        = clean(b.github_url, 300);
+  if (githubUrl && !isHttpUrl(githubUrl)) {
+    return res.status(400).json({ error: 'github_url must be an http(s) URL' });
+  }
 
   const row = {
     title,
@@ -482,7 +536,7 @@ app.post('/api/submissions', smallJson, submitLimiter, (req, res) => {
     pitch,
     story,
     category,
-    tags:            JSON.stringify(cleanArray(b.tags, 5, 32) || []),
+    tags:            JSON.stringify(cleanTags(b.tags, 5) || []),
     integrations:    JSON.stringify(cleanArray(b.integrations, 20, 60) || []),
     tools_used:      JSON.stringify(cleanArray(b.tools_used, 20, 60) || []),
     skills:          JSON.stringify(cleanArray(b.skills, 20, 60) || []),
@@ -508,9 +562,15 @@ app.post('/api/submissions', smallJson, submitLimiter, (req, res) => {
     tokens_total:          cleanInt(b.tokens_total, 1_000_000_000_000_000),
     complexity_tier: complexityTier,
     gotchas:         JSON.stringify(cleanArray(b.gotchas, 5, 240) || []),
-    time_to_build:   clean(b.time_to_build, 60),
+    time_to_build:   timeToBuild,
     satisfaction,
     source_url:      sourceUrl,
+    automation_level: automationLevel,
+    context_tier:     contextTier,
+    cost_tier:        costTier,
+    reliability,
+    source_available: sourceAvailable,
+    github_url:       githubUrl && isHttpUrl(githubUrl) ? githubUrl : null,
     image_url:     imageUrl,
     video_url:     videoUrl,
     image_prompt:  clean(b.image_prompt, 600),
@@ -536,6 +596,14 @@ app.post('/api/submissions', smallJson, submitLimiter, (req, res) => {
   // Return the plaintext delete token + a ready-to-share delete link.
   hydrated.delete_token = deleteToken;
   hydrated.delete_url = `/use-cases/${inserted.id}?delete=${deleteToken}`;
+
+  // Pre-built "share on X" link. The submitting agent can surface this to
+  // the user right after they post so they have a one-click way to tweet
+  // their agent card. Title is unique per submission, so each tweet is fresh.
+  const cardUrl = `${PUBLIC_URL}/use-cases/${inserted.id}`;
+  const tweetText = `${title}\n\n${pitch}\n\nBuilt with Hermes 👇`;
+  hydrated.share_tweet_url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(tweetText)}&url=${encodeURIComponent(cardUrl)}`;
+
   res.status(201).json(hydrated);
 });
 
@@ -643,9 +711,30 @@ app.get('/api/meta', (_req, res) => {
     deployments: [...DEPLOYMENTS],
     triggers: [...TRIGGERS],
     memory_types: [...MEMORY_TYPES],
+    automation_levels: [...AUTOMATION_LEVELS],
+    context_tiers: [...CONTEXT_TIERS],
+    cost_tiers: [...COST_TIERS],
+    reliability_tiers: [...RELIABILITY_TIERS],
+    source_availability: [...SOURCE_AVAILABILITY],
+    time_to_build_tiers: [...TIME_TO_BUILD_TIERS],
+    complexity_tiers: [...COMPLEXITY_TIERS],
     verify_enabled: VERIFY_ENABLED,
     verify_price_usd: VERIFY_PRICE_USD,
   });
+});
+
+// Popular tags, with counts. Used by submit prompts to surface existing
+// canonical tags so the agent can match instead of inventing new ones.
+app.get('/api/tags', (_req, res) => {
+  const rows = db.prepare(
+    `SELECT j.value AS tag, COUNT(*) AS count
+     FROM submissions, json_each(submissions.tags) j
+     WHERE approved = 1
+     GROUP BY j.value
+     ORDER BY count DESC, tag ASC
+     LIMIT 200`
+  ).all();
+  res.json(rows);
 });
 
 // ---------- stats: aggregates for dashboard ----------
@@ -716,6 +805,13 @@ app.get('/api/stats', (_req, res) => {
     by_host:         groupScalar('host'),
     by_trigger:      groupScalar('trigger_type'),
     by_memory:       groupScalar('memory_type'),
+    by_automation:    groupScalar('automation_level'),
+    by_context_tier:  groupScalar('context_tier'),
+    by_cost_tier:     groupScalar('cost_tier'),
+    by_reliability:   groupScalar('reliability'),
+    by_source:        groupScalar('source_available'),
+    by_time_to_build: groupScalar('time_to_build'),
+    by_complexity:    groupScalar('complexity_tier'),
     by_integration:  groupArray('integrations'),
     by_tool:         groupArray('tools_used'),
     by_skill:        groupArray('skills'),
