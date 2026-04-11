@@ -206,7 +206,7 @@
     const feedEl = document.getElementById('feed');
     if (!feedEl) return;
 
-    const state = { sort: 'trending', category: '', q: '' };
+    const state = { sort: 'trending', category: '', q: '', verified: false };
     let debounceTimer = null;
 
     function cardHtml(item) {
@@ -231,6 +231,7 @@
       params.set('sort', state.sort);
       if (state.category) params.set('category', state.category);
       if (state.q) params.set('q', state.q);
+      if (state.verified) params.set('verified', '1');
       try {
         const res = await fetch('/api/submissions?' + params.toString());
         const items = await res.json();
@@ -258,15 +259,28 @@
       toggleLike(Number(btn.dataset.id), btn);
     });
 
-    // Sort tabs
-    document.querySelectorAll('.tab').forEach((tab) => {
+    // Sort tabs — only tabs that actually have a data-sort value.
+    // The verified toggle shares the .tab class for visual consistency
+    // but is an independent filter, not a sort, so it's handled below.
+    document.querySelectorAll('.tab[data-sort]').forEach((tab) => {
       tab.addEventListener('click', () => {
-        document.querySelectorAll('.tab').forEach((t) => t.classList.remove('active'));
+        document.querySelectorAll('.tab[data-sort]').forEach((t) => t.classList.remove('active'));
         tab.classList.add('active');
         state.sort = tab.dataset.sort;
         loadFeed();
       });
     });
+
+    // Verified-only toggle — independent of the sort tabs.
+    const verifiedBtn = document.getElementById('verified-toggle');
+    if (verifiedBtn) {
+      verifiedBtn.addEventListener('click', () => {
+        state.verified = !state.verified;
+        verifiedBtn.classList.toggle('active', state.verified);
+        verifiedBtn.setAttribute('aria-pressed', String(state.verified));
+        loadFeed();
+      });
+    }
 
     // Search (debounced)
     const searchInput = document.getElementById('search-input');

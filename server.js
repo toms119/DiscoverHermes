@@ -710,6 +710,10 @@ app.get('/api/submissions', (req, res) => {
     where.push(`EXISTS (SELECT 1 FROM json_each(submissions.integrations) WHERE value = ?)`);
     params.push(String(req.query.integration));
   }
+  // Verified-only toggle on the feed. Accepts the usual truthy strings.
+  if (req.query.verified === '1' || req.query.verified === 'true') {
+    where.push('verified = 1');
+  }
   if (req.query.q) {
     const q = `%${String(req.query.q).toLowerCase()}%`;
     where.push(`(
