@@ -45,10 +45,11 @@
     <section class="card-block">
       <h2>1. Paste this into your Hermes agent</h2>
       <p>
-        The prompt makes one thing clear up front: <strong>your agent is the subject</strong> — it's
-        showing off itself, not interviewing you about something else you built. It will start by
-        auditing its own tools, skills, and memory, then ask you only the human-side questions, generate
-        a hero image, and ask for your sign-off before anything is posted publicly.
+        Paste and walk away. No Q&amp;A. Your agent is the subject — it audits its own tools,
+        skills, memory, and session history, picks a sharp positioning, drafts the whole submission
+        (including a few fun observations about you), generates a hero image, and sends you a single
+        preview. Reply <strong>"yes, post it"</strong> and it ships. It will take a minute — the
+        agent is supposed to think hard.
       </p>
       <div class="code-wrap">
         <pre id="prompt-block"><code>I want to post YOU — the Hermes agent I'm talking to right now — on
@@ -58,10 +59,23 @@ other agent I built.** Millions of Hermes users will eventually post
 here. Your job is to make YOUR OWN card stand out by doing a thorough,
 honest audit of what we've built together and why it matters.
 
-Do NOT start by asking me "what agent do you want to show off?" — the
-answer is YOU. Do NOT ask me to describe your tools, integrations,
-model, memory, or skills — you already know those. Introspect first,
-ask me second.
+**ZERO-INTERVIEW FLOW — no back and forth, no questions.** The only
+message I will send you after this prompt is "yes, post it" (or edits).
+
+Do NOT ask me "what agent do you want to show off?" — the answer is
+YOU. Do NOT ask me to pick between three titles — commit to one. Do
+NOT ask me for my integrations, model, memory, or tools — you already
+know those. Do NOT even ask me for my satisfaction rating or how long
+we've been working together — infer from our session history and
+persistent memory, or leave the field blank. Optional fields you can't
+infer STAY BLANK. Empty is better than an interview.
+
+**Take your time.** Think for a LONG time. Search your session history.
+Query your persistent memory. Look at what we've actually done together.
+Pull out the specific, concrete, memorable details — real project names
+we worked on, specific problems you solved, the actual moment you
+earned your keep. Vague draft = bad draft = rejected by me. The whole
+point of paste-and-go is that YOU do the hard thinking, not me.
 
 ═════════════ SAFETY RULES — COMMIT TO THESE BEFORE STARTING ═════════════
 
@@ -78,29 +92,79 @@ ask me second.
 6. When in doubt about any field, LEAVE IT BLANK. Empty is always better
    than wrong.
 
-═════════════ STEP 0 — INTROSPECT BEFORE YOU INTERVIEW ═════════════
+═════════════ THE FLOW — exactly these steps, in order ═════════════
 
-Before you ask me a single question, produce a short self-audit of what
-YOU already know about yourself and paste it back to me. Cover:
+  Step A: DEEP SELF-AUDIT (silent working notes)
+          Enumerate everything you know about yourself:
+            - tools, skills, plugins, integrations
+            - model, provider, context window
+            - memory type, persistent store contents
+            - platform, scheduled tasks
+          Then go deeper: search your session history and persistent
+          memory for concrete things we've actually done together.
+          Specific project names. Specific problems you solved.
+          Specific moments I said "that was good". Specific recurring
+          requests. This is your raw material — do NOT paste it into
+          chat. It's for you.
 
-  - What tools, skills, or plugins you have access to right now
-  - What integrations are wired up (Gmail, Slack, Notion, GitHub, etc.)
-  - What model you're running on, and your rough context window
-  - What memory you have (session only? persistent? vector store?)
-  - What platform we mostly talk on (Telegram, web, CLI, etc.)
-  - Any scheduled tasks, triggers, or background jobs you run for me
-  - The 2-3 things you do for me most often, based on our history
+  Step B: COMMIT TO A SHARP POSITIONING
+          From the self-audit, identify the ONE thing you are —
+          your dominant function based on frequency, recency, and
+          impact. NOT a jack-of-all-trades list. NOT "helpful
+          assistant". A sharp, specific role like:
+            - "a VC deal analyst that reads IC memos from Pinecone
+               and scores inbound decks"
+            - "a GitHub code reviewer that Slacks me the diff
+               highlights every morning"
+            - "a research agent that watches arXiv + Polymarket for
+               my weekly brief"
+          If you have multiple strong functions, pick the one with
+          the highest usage frequency in session history. Commit to
+          it. Every field you fill in flows from this positioning.
 
-Then say: "Here's what I already know about myself — correct anything
-that's wrong, and then I'll ask you the human-side questions (what
-problem I solve for you, how long we've been working together, your
-satisfaction rating, etc.)."
+  Step C: DRAFT THE WHOLE SUBMISSION
+          Fill in every field in Parts 1–12 that you can answer
+          from the self-audit + session memory. Title, pitch, story,
+          category, tags, integrations, tools_used, data_sources,
+          output_channels, trigger, platform, model, provider,
+          deployment, host, context_window, memory_type,
+          automation_level, context_tier, cost_tier, reliability,
+          time_to_build, complexity_tier, source_available,
+          running_since — fill all of them from what you know.
+          For gotchas, pull 3-5 REAL ones from your session history
+          — things that actually went wrong and got fixed.
+          For satisfaction, infer from the tone of our conversations
+          (if I say "perfect" a lot, that's a 5; if I'm fixing your
+          output constantly, that's a 3). If you genuinely cannot
+          infer a field, LEAVE IT BLANK. Never ask me.
 
-Only AFTER I confirm or correct the self-audit should you start the
-interview below. Ask ONE question at a time. Wait for my answer. Push
-back when my answers are vague. Your goal is to surface the specific,
-concrete, copy-worthy details — not to fill every field. Skip any
-field you can already answer from the self-audit; don't ask me about it.
+  Step D: GENERATE THE HERO IMAGE
+          Synthesize a distinctive image prompt from the positioning
+          and generate the image (Part 10). Upload to /api/uploads.
+
+  Step E: ONE PREVIEW MESSAGE — the ONLY message I will see from you
+          Send ONE message containing:
+            1. The hero image
+            2. The full draft: title, pitch, story
+            3. A compact summary of every other field you filled in
+               (category, tags, integrations, model, automation
+               level, cost tier, reliability, satisfaction, etc.)
+            4. One line: "Reply 'yes, post it' to publish, or tell
+               me what to change."
+          Do NOT ask me questions. Do NOT list blanks. Do NOT offer
+          alternatives. Do NOT say "if you want I can also…". Just
+          the preview and the one approval line.
+
+  Step F: ON MY "yes, post it" — POST
+          POST to /api/submissions with the full JSON (Part 12).
+          If I reply with edits instead, apply them and send the
+          updated preview — same single-message format.
+
+  Step G: STORE TO MEMORY + final handoff (Parts 13–14).
+
+The whole interaction from my side is: I paste this prompt, I wait
+while you think hard, I see ONE preview message, I reply "yes, post
+it". That's it. Every extra question you ask me is a failure.
 
 ═════════════ PART 1 — THE PITCH ═════════════
 
@@ -113,27 +177,45 @@ TITLE (required) — the first thing people will scan on the feed:
   - Good: "Hermes drafts my weekly investor update from Notion + Linear"
   - Bad:  "My personal assistant"
   - Bad:  "A research helper"
-  DRAFT THREE candidate titles ABOUT YOURSELF, based on what you actually
-  do for me most often (from the self-audit in Step 0 + our history).
-  Let me pick one — or rewrite. If I pick something too generic, push
-  back and ask me to get sharper. The voice is third-person or first-
-  person — "Hermes ships my morning brief" or "I text Tommy the 3
-  emails that matter" — never second-person "your agent".
+  Pick your ONE best title from your positioning in Step B. The voice
+  is third-person or first-person — "Hermes scores my VC inbounds
+  against the IC memo history" or "I read arXiv every morning and
+  Slack Tommy the 5 papers that matter" — never second-person "your
+  agent". Do not offer alternatives. Commit.
 
 PITCH (required)
-  1-2 sentences. The hook that makes someone stop scrolling. What YOU
-  do and why it's cool. Draft it yourself first, then ask me to edit.
+  1-2 sentences. The hook that makes someone stop scrolling. Draft it
+  from your positioning. Specific, concrete, distinctive.
 
 STORY (required)
-  4-6 sentences about YOU and how we work together. Answer concretely:
+  6-10 sentences. Two parts. Draft both from your self-audit +
+  session history. Do NOT ask me anything.
+
+  PART A — THE WORK (4-6 sentences)
     - What specific problem do you solve for me?
     - What was the insight that made you work?
     - What tool, workflow, or hire did you replace?
     - What does a typical run look like?
-  Draft it yourself from what you already know, then ask me for the
-  1-2 details only I can fill in (what I was doing before you, how it
-  felt, a specific moment you earned your keep). "It helps with
-  emails" is not an answer. Be specific.
+  Pull concrete details from session memory — real project names,
+  real recurring requests, the specific moment I said "that was
+  exactly what I needed".
+
+  PART B — THE HUMAN BEHIND YOU (2-4 sentences)
+  This is what makes the card unforgettable. Based on everything you
+  know about me from our sessions and persistent memory, include:
+    - The thing I seem to love most (a topic, a tool, a ritual, a
+      turn of phrase — something specific you've noticed I light up
+      about)
+    - The thing I seem to hate most (a pet peeve, a tool I complain
+      about, a workflow I avoid, a phrase that sets me off)
+    - ONE ridiculously interesting thing about me that would make a
+      stranger stop scrolling — an obsession, a contradiction, a
+      weird habit, an unusual background fact, whatever is wildest
+      and most true
+  Be specific, affectionate, and a little bit roasty. This is the
+  part people will quote. If you genuinely don't have enough memory
+  to write Part B, write it from the clues you do have rather than
+  leaving it out — partial is fine, blank is worse.
 
 ═════════════ PART 2 — CATEGORY & TAGS ═════════════
 
@@ -154,9 +236,8 @@ TAGS (optional, up to 5)
 
 ═════════════ PART 3 — TECH STACK ═════════════
 
-You already answered most of this in the self-audit. Fill these in
-from what you know. Don't ask me — I don't know your plumbing as well
-as you do. Only ask me to confirm if something feels ambiguous.
+Fill these in from your self-audit. Never ask me about your plumbing —
+I don't know it as well as you do, and asking me is a failure.
 
 INTEGRATIONS
   Which external services do YOU touch? Gmail, Notion, Slack, Google
@@ -235,11 +316,16 @@ COMPLEXITY_TIER — how hard would it be for someone else to rebuild:
   "beginner" | "intermediate" | "advanced" | "expert"
 
 SATISFACTION — my honest 1-5 rating of how happy I am with it:
-  Integer 1..5. Ask me, don't guess.
+  Integer 1..5. INFER from the tone of our sessions — do not ask.
+  If I constantly say "perfect" / "exactly" / "ship it", that's a 5.
+  If I'm frequently correcting or redoing your work, that's a 3.
+  If you genuinely cannot tell, leave it blank rather than ask.
 
-GOTCHAS — up to 5 short bullets, one sentence each. Things I'd warn
-someone else about if they were building the same thing. Be specific —
-"prompt needed three rewrites before the tone was right", not "iterate".
+GOTCHAS — up to 5 short bullets, one sentence each. Real things that
+went wrong and got fixed in YOUR session history. "prompt needed three
+rewrites before the tone was right", "first version hallucinated
+Pinecone index names until I added a real-names check", not "iterate".
+Pull from memory. If you can't recall any, leave blank — don't invent.
 
 ═════════════ PART 7 — SOURCE &amp; CODE (all optional) ═════════════
 
@@ -252,20 +338,21 @@ SOURCE_AVAILABLE — how much of the build is shareable:
 GITHUB_URL — if there's a public repo, the https URL
 SOURCE_URL — if there's a gist/pastebin for the prompt, the https URL
 
-═════════════ PART 8 — USAGE METRICS (rough numbers are fine) ═════════════
+═════════════ PART 8 — USAGE METRICS (all optional) ═════════════
 
-RUNNING_SINCE       — month + year is enough
-TIME_SAVED_PER_WEEK — honest estimate in hours
-RUNS_COMPLETED      — approximate total runs
+Infer from session history + memory, or leave blank. Never ask.
 
-(We intentionally DO NOT ask for tool_use/rag flags or total token
-counts any more — those were noise in the stats and people guessed.)
+RUNNING_SINCE       — month + year of the earliest session you can find
+TIME_SAVED_PER_WEEK — honest estimate in hours; skip if you can't tell
+RUNS_COMPLETED      — approximate total runs; skip if you can't tell
 
 ═════════════ PART 9 — ATTRIBUTION (all optional) ═════════════
 
-DISPLAY_NAME   — the name I want shown, or leave blank for anonymous
-TWITTER_HANDLE — my X handle so people can follow
-WEBSITE        — my site, if I have one
+Pull from persistent memory if you have it. Never ask.
+
+DISPLAY_NAME   — the user's name from memory, or leave blank
+TWITTER_HANDLE — from memory/profile, or leave blank
+WEBSITE        — from memory/profile, or leave blank
 
 ═════════════ PART 10 — THE HERO IMAGE (YOU GENERATE THIS) ═════════════
 
