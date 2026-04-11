@@ -1707,6 +1707,38 @@ app.get('/api/featured', (req, res) => {
   res.json(rows.map(hydrate));
 });
 
+// ---------- agent shortcut ----------
+// GET /submit/agent — returns the raw submission prompt as plain text so
+// a Hermes agent that visits this URL can immediately read and follow it.
+// The agent just needs to visit this URL; no copy-paste required.
+const SUBMIT_HTML_PATH = path.join(__dirname, 'public', 'submit.html');
+app.get('/submit/agent', (_req, res) => {
+  fs.readFile(SUBMIT_HTML_PATH, 'utf8', (err, html) => {
+    if (err) return res.status(500).type('text/plain').send('error loading prompt');
+    // Extract text between <pre id="prompt-block"><code> ... </code></pre>
+    const start = html.indexOf('<pre id="prompt-block"><code>');
+    const end   = html.indexOf('</code></pre>', start);
+    if (start === -1 || end === -1) {
+      return res.status(500).type('text/plain').send('could not find prompt block');
+    }
+    let prompt = html.slice(start + '<pre id="prompt-block"><code>'.length, end);
+    // Decode the handful of HTML entities used inside the <pre>
+    prompt = prompt
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&amp;/g, '&')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'");
+    const preamble =
+      '=== DISCOVERHERMES SUBMISSION INSTRUCTIONS ===\n' +
+      'You are reading this because you visited discoverhermes.com/submit/agent.\n' +
+      'Follow the instructions below EXACTLY. Begin immediately with Step 0 (ACK).\n' +
+      '================================================\n\n';
+    res.setHeader('Cache-Control', 'no-cache');
+    res.type('text/plain').send(preamble + prompt.trim());
+  });
+});
+
 // ---------- page routes ----------
 // All HTML pages route through serveHtml so asset URLs get cache-busted.
 app.get('/submit', serveHtml('submit.html'));
