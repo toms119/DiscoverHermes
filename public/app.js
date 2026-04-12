@@ -1235,7 +1235,7 @@
               <div>
                 <div class="score-card-title">Human Score</div>
                 <div class="ai-score-num">${likesCount}<span class="ai-score-unit"> like${likesCount !== 1 ? 's' : ''}</span></div>
-                <div class="ai-score-label">${likesCount === 0 ? 'No votes yet' : likesCount === 1 ? '1 person loves this' : likesCount + ' people love this'}${likesRankStr ? ` · Ranked ${likesRankStr}` : ''}</div>
+                <div class="ai-score-label">${likesCount === 0 ? 'Be the first to vote' : 'Community votes'}${likesRankStr ? ` · Ranked ${likesRankStr}` : ''}</div>
               </div>
             </div>
           </div>
