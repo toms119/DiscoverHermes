@@ -1845,11 +1845,41 @@
           </section>`;
           })() : ''}
 
-          ${(item.score_history && item.score_history.length > 0) || item.ai_score != null ? `
+          ${(item.score_history && item.score_history.length > 0) || item.ai_score != null ? (() => {
+            const histLen = (item.score_history || []).length;
+            const aiVal = item.ai_score != null ? (Number.isInteger(item.ai_score) ? item.ai_score : item.ai_score.toFixed(1)) : '—';
+            const netVal = (item.likes || 0) - (item.dislikes || 0);
+            const avgScore = item.site_avg_score != null ? item.site_avg_score : '—';
+            const avgLikes = item.site_avg_likes != null ? item.site_avg_likes : '—';
+            const aiDiff = item.ai_score != null && item.site_avg_score != null
+              ? (item.ai_score - item.site_avg_score).toFixed(1) : null;
+            const likeDiff = item.site_avg_likes != null
+              ? (netVal - item.site_avg_likes).toFixed(1) : null;
+            const diffBadge = (val) => {
+              if (val == null) return '';
+              const n = Number(val);
+              if (n > 0) return `<span class="score-diff score-diff-up">+${val}</span>`;
+              if (n < 0) return `<span class="score-diff score-diff-down">${val}</span>`;
+              return `<span class="score-diff">±0</span>`;
+            };
+            return `
           <section class="detail-section score-history-section">
-            <h2>Score History</h2>
-            <canvas class="score-history-canvas" id="score-history-chart"></canvas>
-          </section>` : ''}
+            <h2>Score Overview</h2>
+            <div class="score-overview-grid">
+              <div class="score-overview-item">
+                <div class="score-overview-label">AI Score</div>
+                <div class="score-overview-val score-overview-ai">${aiVal}</div>
+                <div class="score-overview-cmp">Site avg: ${avgScore} ${diffBadge(aiDiff)}</div>
+              </div>
+              <div class="score-overview-item">
+                <div class="score-overview-label">Net Likes</div>
+                <div class="score-overview-val score-overview-likes">${netVal}</div>
+                <div class="score-overview-cmp">Site avg: ${avgLikes} ${diffBadge(likeDiff)}</div>
+              </div>
+            </div>
+            ${histLen >= 2 ? `<canvas class="score-history-canvas" id="score-history-chart"></canvas>` : ''}
+          </section>`;
+          })() : ''}
 
           ${commentsSectionHtml}
         </div>`;
