@@ -328,7 +328,7 @@
     if (item.model) chips.push(['model', item.model]);
     else if (item.platform) chips.push(['platform', item.platform]);
     if (item.time_saved_per_week) chips.push(['hours', `${item.time_saved_per_week}h/wk saved`]);
-    else if (item.runs_completed) chips.push(['runs', `${fmtNum(item.runs_completed)} runs`]);
+    else if (item.runs_completed) chips.push(['runs', `${fmtNum(item.runs_completed)} agent sessions`]);
     if (item.deployment) chips.push(['deployment', item.deployment]);
     return chips
       .slice(0, 4)
@@ -389,7 +389,7 @@
       else if (item._aiPct != null && item._aiPct <= 10) badges.push('<span class="achiev" title="Top 10% AI score">✨ Elite</span>');
       // Absolute metrics (still valuable signals)
       if (item.time_saved_per_week >= 10) badges.push('<span class="achiev" title="Saves 10+ hours/week">⚡ Time Saver</span>');
-      if (item.runs_completed >= 500) badges.push('<span class="achiev" title="500+ runs completed">🏆 Powerhouse</span>');
+      if (item.runs_completed >= 500) badges.push('<span class="achiev" title="500+ agent sessions completed">🏆 Powerhouse</span>');
       if (item.approx_monthly_tokens >= 1000000) badges.push('<span class="achiev" title="1M+ tokens/month">🧠 Token Beast</span>');
       return badges.slice(0, 2).join('');
     }
@@ -982,6 +982,127 @@
   }
 
   // ==========================================================
+  // Score history chart — draws AI score + net likes over time on a canvas
+  function drawScoreHistory(canvas, item) {
+    const history = item.score_history || [];
+    // If no history, show a single-point "current" view
+    const points = history.length > 0 ? history : (item.ai_score != null ? [{
+      ai_score: item.ai_score,
+      likes: item.likes || 0,
+      dislikes: item.dislikes || 0,
+      recorded_at: item.last_reviewed_at || item.created_at || new Date().toISOString(),
+    }] : []);
+    if (points.length === 0) { canvas.parentElement.style.display = 'none'; return; }
+
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+    const W = rect.width, H = rect.height;
+    const pad = { top: 30, right: 16, bottom: 30, left: 40 };
+    const plotW = W - pad.left - pad.right;
+    const plotH = H - pad.top - pad.bottom;
+
+    // Extract series
+    const aiScores = points.map(p => p.ai_score ?? null);
+    const netLikes = points.map(p => (p.likes || 0) - (p.dislikes || 0));
+    const dates = points.map(p => p.recorded_at);
+
+    // Y ranges
+    const aiMin = 0, aiMax = Math.max(100, ...aiScores.filter(v => v != null));
+    const likeMax = Math.max(5, ...netLikes.map(Math.abs));
+    const likeMin = -likeMax;
+
+    // Helpers
+    const xFor = (i) => pad.left + (points.length === 1 ? plotW / 2 : (i / (points.length - 1)) * plotW);
+    const yAi = (v) => pad.top + (1 - v / aiMax) * plotH;
+    const yLike = (v) => pad.top + (1 - (v - likeMin) / (likeMax - likeMin)) * plotH;
+
+    // Background
+    ctx.fillStyle = 'rgba(255,255,255,0.03)';
+    ctx.fillRect(pad.left, pad.top, plotW, plotH);
+
+    // Grid lines
+    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= 4; i++) {
+      const y = pad.top + (i / 4) * plotH;
+      ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(W - pad.right, y); ctx.stroke();
+    }
+
+    // Draw AI score line (orange)
+    const validAi = aiScores.some(v => v != null);
+    if (validAi) {
+      ctx.strokeStyle = '#e8834a';
+      ctx.lineWidth = 2.5;
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      let started = false;
+      aiScores.forEach((v, i) => {
+        if (v == null) return;
+        const x = xFor(i), y = yAi(v);
+        if (!started) { ctx.moveTo(x, y); started = true; }
+        else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+      // Dots
+      aiScores.forEach((v, i) => {
+        if (v == null) return;
+        ctx.fillStyle = '#e8834a';
+        ctx.beginPath(); ctx.arc(xFor(i), yAi(v), 4, 0, Math.PI * 2); ctx.fill();
+      });
+    }
+
+    // Draw likes line (pink/red)
+    ctx.strokeStyle = '#ff4060';
+    ctx.lineWidth = 2;
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    netLikes.forEach((v, i) => {
+      const x = xFor(i), y = yLike(v);
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+    netLikes.forEach((v, i) => {
+      ctx.fillStyle = '#ff4060';
+      ctx.beginPath(); ctx.arc(xFor(i), yLike(v), 3, 0, Math.PI * 2); ctx.fill();
+    });
+
+    // Labels
+    ctx.font = '11px -apple-system, sans-serif';
+    ctx.fillStyle = '#e8834a';
+    ctx.textAlign = 'left';
+    ctx.fillText('AI Score', pad.left + 4, pad.top - 8);
+    ctx.fillStyle = '#ff4060';
+    ctx.textAlign = 'right';
+    ctx.fillText('Net Likes', W - pad.right - 4, pad.top - 8);
+
+    // Y axis labels
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.textAlign = 'right';
+    ctx.font = '10px -apple-system, sans-serif';
+    ctx.fillText(String(aiMax), pad.left - 4, pad.top + 4);
+    ctx.fillText('0', pad.left - 4, pad.top + plotH + 4);
+
+    // X axis dates
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.textAlign = 'center';
+    ctx.font = '9px -apple-system, sans-serif';
+    if (dates.length >= 2) {
+      [0, dates.length - 1].forEach(i => {
+        const d = new Date(dates[i]);
+        const label = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        ctx.fillText(label, xFor(i), H - 6);
+      });
+    } else if (dates.length === 1) {
+      const d = new Date(dates[0]);
+      ctx.fillText(d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }), W / 2, H - 6);
+    }
+  }
+
   // DETAIL PAGE
   // ==========================================================
   function initDetail() {
@@ -1138,7 +1259,7 @@
           // Always bold the first sentence of the story (the lede).
           boldSet.add(allSentences[0].text);
           if (allSentences.length > 1) {
-            // Score remaining sentences, pick top 2 for 3 total bolded.
+            // Score remaining sentences, pick top 3 for 4 total bolded.
             // Prefer spreading bolds across different paragraphs.
             const scored = allSentences.slice(1).map(s => ({
               s, score: scoreImportance(s.text, s.sentIdx, allSentences.length)
@@ -1151,6 +1272,13 @@
               const secondPara = scored[0].s.paraIdx;
               const diffPara = scored.slice(1).find(x => x.s.paraIdx !== secondPara);
               boldSet.add((diffPara || scored[1]).s.text);
+              if (scored.length > 2) {
+                // For the 4th bold, prefer a paragraph not yet used
+                const usedParas = new Set([allSentences[0].paraIdx, scored[0].s.paraIdx]);
+                if (diffPara) usedParas.add(diffPara.s.paraIdx);
+                const fourthCandidate = scored.slice(1).find(x => !boldSet.has(x.s.text) && !usedParas.has(x.s.paraIdx));
+                boldSet.add((fourthCandidate || scored.find(x => !boldSet.has(x.s.text)) || scored[2]).s.text);
+              }
             }
           }
         }
@@ -1312,7 +1440,10 @@
              <span class="side-link-value">${escapeHtml((item.website || '').replace(/^https?:\/\//, '').replace(/\/$/, ''))}</span>
              <span class="side-link-arrow">↗</span>
            </a>`
-        : '';
+        : `<span class="side-link side-link-web side-link-placeholder">
+             <span class="side-link-label">Web</span>
+             <span class="side-link-value add-website-hint">Add via your agent</span>
+           </span>`;
       const authorCard = `
         <div class="side-card author-card">
           <div class="author-row">
@@ -1350,7 +1481,7 @@
             ${item.tasks_completed ? `<div class="side-metric"><span class="side-metric-val">${fmtNumber(item.tasks_completed)}</span><span class="side-metric-lbl">tasks done</span></div>` : ''}
             ${item.active_users && item.active_users > 1 ? `<div class="side-metric"><span class="side-metric-val">${fmtNumber(item.active_users)}</span><span class="side-metric-lbl">active users</span></div>` : ''}
             ${item.time_saved_per_week ? `<div class="side-metric"><span class="side-metric-val">${item.time_saved_per_week}h</span><span class="side-metric-lbl">saved / week</span></div>` : ''}
-            ${item.runs_completed ? `<div class="side-metric"><span class="side-metric-val">${fmtNumber(item.runs_completed)}</span><span class="side-metric-lbl">sessions run</span></div>` : ''}
+            ${item.runs_completed ? `<div class="side-metric"><span class="side-metric-val">${fmtNumber(item.runs_completed)}</span><span class="side-metric-lbl">agent sessions</span></div>` : ''}
             ${item.hours_used ? `<div class="side-metric"><span class="side-metric-val">${fmtNumber(item.hours_used)}</span><span class="side-metric-lbl">hours used</span></div>` : ''}
             ${item.approx_monthly_tokens ? `<div class="side-metric"><span class="side-metric-val">${fmtNumber(item.approx_monthly_tokens)}</span><span class="side-metric-lbl">tokens / mo</span></div>` : ''}
             ${item.running_since ? `<div class="side-metric wide"><span class="side-metric-val">${escapeHtml(fmtDate(item.running_since))}</span><span class="side-metric-lbl">running since</span></div>` : ''}
@@ -1537,7 +1668,7 @@
         highlights.push(`Saves ${item.time_saved_per_week}h every week`);
       }
       if (item.runs_completed) {
-        highlights.push(`${fmtNumber(item.runs_completed)} sessions run`);
+        highlights.push(`${fmtNumber(item.runs_completed)} agent sessions`);
       }
       if (item.running_since) {
         const since = Date.parse(item.running_since);
@@ -1575,7 +1706,7 @@
       else if (aiPct != null && aiPct <= 10) detailAchievements.push({ icon: '✨', title: 'Elite', desc: `Top 10% AI score (#${item.ai_rank} of ${item.total_scored})` });
       // Absolute metrics
       if (item.time_saved_per_week >= 10) detailAchievements.push({ icon: '⚡', title: 'Time Saver', desc: `Saves ${item.time_saved_per_week}h+ every week` });
-      if (item.runs_completed >= 500) detailAchievements.push({ icon: '🏆', title: 'Powerhouse', desc: `${fmtNumber(item.runs_completed)} runs completed` });
+      if (item.runs_completed >= 500) detailAchievements.push({ icon: '🏆', title: 'Powerhouse', desc: `${fmtNumber(item.runs_completed)} agent sessions completed` });
       if (item.approx_monthly_tokens >= 1000000) detailAchievements.push({ icon: '🧠', title: 'Token Beast', desc: `${fmtNumber(item.approx_monthly_tokens)} tokens/mo` });
       if (item.verified) detailAchievements.push({ icon: '✅', title: 'Verified', desc: 'Builder-verified agent' });
       if (item.running_since) {
@@ -1621,50 +1752,63 @@
             ${renderUpdatesPanel(item)}
           </section>
 
-          ${commentsSectionHtml}
-
           ${item.ai_rationale ? (() => {
             const raw = item.ai_rationale;
-            // Smart parse: split on dimension boundaries and sentence-ending periods
-            // Pattern: "Novelty 4.0 (...), Autonomy 6.0 (...)" → individual items
-            // Also split on ". " for summary items like "Working baseline +15. Core avg 6.12."
-            const lines = [];
-            // Strip leading "Phase 1: " etc.
-            let text = raw.replace(/^Phase\s*\d+:\s*/i, '');
-            // Split dimensions: "Name N.N (detail)," or "Name N.N (detail)."
-            const dimRe = /([A-Z][a-z]+)\s+(\d+(?:\.\d+)?)\s*(\([^)]*\))?[,.]?\s*/g;
-            let m, lastIdx = 0;
-            const dims = [];
-            while ((m = dimRe.exec(text)) !== null) {
-              dims.push({ name: m[1], score: m[2], detail: m[3] || '', end: dimRe.lastIndex });
-              lastIdx = dimRe.lastIndex;
-            }
-            if (dims.length >= 3) {
-              // We found structured dimensions — render them individually
-              dims.forEach(d => {
-                lines.push(`<span class="breakdown-dim">${escapeHtml(d.name)}</span> <span class="breakdown-score">${escapeHtml(d.score)}</span>${d.detail ? ` <span class="breakdown-detail">${escapeHtml(d.detail)}</span>` : ''}`);
+            // Split rationale into individual line items.
+            // Format: "Phase 1: Novelty 4.0 (detail), Autonomy 6.0 (detail). Summary. Final 45."
+            // Strategy: split on ), then on .  — each becomes its own bullet.
+            const items = [];
+            // First split on "), " to get dimension entries
+            const chunks = raw.split(/\),\s*/);
+            if (chunks.length >= 3) {
+              // Structured format with parenthesized details
+              chunks.forEach((chunk, i) => {
+                let c = chunk.trim();
+                // Strip leading "Phase N: " from the first chunk
+                c = c.replace(/^Phase\s*\d+:\s*/i, '');
+                if (i < chunks.length - 1) c += ')'; // restore stripped )
+                // The last chunk may contain "). Summary. Final." — split on ". "
+                if (i === chunks.length - 1) {
+                  c.split(/\.\s*/).filter(s => s.trim().length > 2).forEach(s => {
+                    let t = s.trim().replace(/\.$/, '');
+                    if (t) items.push(t);
+                  });
+                } else {
+                  if (c.length > 2) items.push(c);
+                }
               });
-              // Parse the remaining summary items after dimensions
-              const remainder = text.slice(lastIdx).trim();
-              if (remainder) {
-                remainder.split(/\.\s*/).filter(s => s.trim().length > 2).forEach(s => {
-                  const t = s.trim().replace(/\.$/, '');
-                  if (t) lines.push(escapeHtml(t));
-                });
-              }
             } else {
-              // Fallback: split on ". " or " - "
-              raw.split(/(?:\.\s+|\s+-\s+)/).filter(s => s.trim().length > 3).forEach(s => {
-                lines.push(escapeHtml(s.trim().replace(/\.$/, '')));
+              // Fallback: split on ". "
+              raw.split(/\.\s+/).filter(s => s.trim().length > 3).forEach(s => {
+                items.push(s.trim().replace(/\.$/, ''));
               });
             }
-            const bullets = lines.map(l => `<li>${l}</li>`).join('');
+            // Style each item: highlight dimension names and scores
+            const bullets = items.map(item => {
+              const styled = escapeHtml(item)
+                .replace(/^([\w]+)\s+([\d.]+)/,
+                  '<span class="breakdown-dim">$1</span> <span class="breakdown-score">$2</span>')
+                .replace(/(\([^)]+\))/g, '<span class="breakdown-detail">$1</span>')
+                .replace(/(Final)\s+([\d.]+)/,
+                  '<span class="breakdown-dim breakdown-final">$1</span> <span class="breakdown-score breakdown-final">$2</span>')
+                .replace(/(Grade\s+[SABCD])/,
+                  '<span class="breakdown-grade">$1</span>');
+              return `<li>${styled}</li>`;
+            }).join('');
             return `
           <section class="detail-section ai-breakdown-section">
             <h2>AI Score Breakdown</h2>
             <ul class="ai-breakdown-list">${bullets}</ul>
           </section>`;
           })() : ''}
+
+          ${(item.score_history && item.score_history.length > 0) || item.ai_score != null ? `
+          <section class="detail-section score-history-section">
+            <h2>Score History</h2>
+            <canvas class="score-history-canvas" id="score-history-chart"></canvas>
+          </section>` : ''}
+
+          ${commentsSectionHtml}
         </div>`;
 
       // Hero CTA buttons — prominent links to the agent's website and/or GitHub
@@ -1688,7 +1832,7 @@
       if (item.running_since) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${escapeHtml(fmtDate(item.running_since))}</span><span class="hero-metric-lbl">running since</span></div>`);
       if (item.total_interactions && heroMetrics.length < 3) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${fmtNumber(item.total_interactions)}</span><span class="hero-metric-lbl">interactions</span></div>`);
       if (item.tasks_completed && heroMetrics.length < 3) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${fmtNumber(item.tasks_completed)}</span><span class="hero-metric-lbl">tasks done</span></div>`);
-      if (item.runs_completed && heroMetrics.length < 3) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${fmtNumber(item.runs_completed)}</span><span class="hero-metric-lbl">sessions run</span></div>`);
+      if (item.runs_completed && heroMetrics.length < 3) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${fmtNumber(item.runs_completed)}</span><span class="hero-metric-lbl">agent sessions</span></div>`);
       if (item.active_users && item.active_users > 1 && heroMetrics.length < 3) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${fmtNumber(item.active_users)}</span><span class="hero-metric-lbl">active users</span></div>`);
       if (item.time_saved_per_week && heroMetrics.length < 3) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${item.time_saved_per_week}h</span><span class="hero-metric-lbl">saved / week</span></div>`);
       if (item.approx_monthly_tokens && heroMetrics.length < 3) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${fmtNumber(item.approx_monthly_tokens)}</span><span class="hero-metric-lbl">tokens / mo</span></div>`);
@@ -2138,6 +2282,9 @@
         window.__meta = meta;
         render(item);
         setupDetailNav(id, root);
+        // Draw score history sparkline
+        const canvas = document.getElementById('score-history-chart');
+        if (canvas) drawScoreHistory(canvas, item);
       })
       .catch(() => {
         root.innerHTML = `<div class="empty">Couldn't load this use case. It may have been removed.</div>`;

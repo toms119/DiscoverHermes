@@ -241,6 +241,24 @@ db.exec(`
   );
 `);
 
+// ---------- score history ----------
+// Tracks AI score and human likes over time for sparkline graphs.
+// A new row is inserted each time the AI rescores a submission,
+// and we snapshot current likes on each page view via the API.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS score_history (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    submission_id  INTEGER NOT NULL,
+    ai_score       REAL,
+    likes          INTEGER NOT NULL DEFAULT 0,
+    dislikes       INTEGER NOT NULL DEFAULT 0,
+    recorded_at    TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (submission_id) REFERENCES submissions(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_score_hist_sub
+    ON score_history(submission_id, recorded_at);
+`);
+
 // ---------- living-database updates ----------
 // Each submission can have a timeline of short "what's new" updates the
 // author's agent pushes over time. Rejected updates are hard-deleted
@@ -1308,6 +1326,34 @@ app.get('/api/submissions/:id', (req, res) => {
     hydrated.is_author = false;
   }
 
+  // Score history for sparkline graph (last 30 data points)
+  hydrated.score_history = db.prepare(`
+    SELECT ai_score, likes, dislikes, recorded_at
+    FROM score_history
+    WHERE submission_id = ?
+    ORDER BY recorded_at ASC
+    LIMIT 30
+  `).all(id);
+
+  // Snapshot current state if last snapshot is > 24h old (avoids flooding)
+  const lastSnap = db.prepare(`
+    SELECT recorded_at FROM score_history
+    WHERE submission_id = ? ORDER BY recorded_at DESC LIMIT 1
+  `).get(id);
+  const snapAge = lastSnap ? Date.now() - new Date(lastSnap.recorded_at).getTime() : Infinity;
+  if (snapAge > 24 * 60 * 60 * 1000 && hydrated.ai_score != null) {
+    db.prepare(`
+      INSERT INTO score_history (submission_id, ai_score, likes, dislikes)
+      VALUES (?, ?, ?, ?)
+    `).run(id, hydrated.ai_score, hydrated.likes || 0, hydrated.dislikes || 0);
+    hydrated.score_history.push({
+      ai_score: hydrated.ai_score,
+      likes: hydrated.likes || 0,
+      dislikes: hydrated.dislikes || 0,
+      recorded_at: new Date().toISOString(),
+    });
+  }
+
   // Pre-built share link so the detail page share button works without
   // any client-side tweet assembly. Same helper as the submission insert.
   const cardUrl = `${PUBLIC_URL}/use-cases/${id}`;
@@ -1904,7 +1950,15 @@ app.patch('/api/submissions/:id/score', smallJson, (req, res) => {
   `).run(aiScore, aiGrade, aiScorePending, aiRationale, featured, featuredReason, now, id);
   if (info.changes === 0) return res.status(404).json({ error: 'not found' });
 
+  // Log score history for the sparkline graph
   const row = db.prepare('SELECT * FROM submissions WHERE id = ?').get(id);
+  if (row && row.ai_score != null) {
+    db.prepare(`
+      INSERT INTO score_history (submission_id, ai_score, likes, dislikes, recorded_at)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(id, row.ai_score, row.likes || 0, row.dislikes || 0, now);
+  }
+
   res.json(hydrate(row));
 });
 
