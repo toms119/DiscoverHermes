@@ -3142,6 +3142,19 @@ pre code { background: transparent; padding: 0; }
   gap: 10px;
 }
 .site-footer a:hover { color: var(--accent); }
+.footer-github {
+  color: var(--accent) !important;
+  font-weight: 700;
+  border: 1.5px solid var(--accent);
+  padding: 6px 14px;
+  border-radius: 8px;
+  background: rgba(232, 131, 74, 0.08);
+  transition: background 0.2s, transform 0.15s;
+}
+.footer-github:hover {
+  background: rgba(232, 131, 74, 0.18) !important;
+  transform: translateY(-1px);
+}
 .donation {
   display: inline-flex;
   align-items: center;
