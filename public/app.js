@@ -1286,28 +1286,27 @@
         </section>`;
 
       // ---------- "Why this agent?" highlights strip ----------
-      // Auto-generated 2-3 bullet points for 10-second differentiation scan
+      // Only show genuinely impactful metrics — skip generic labels
       const highlights = [];
-      if (item.category && item.time_saved_per_week) {
-        highlights.push(`${escapeHtml(item.category)} agent that saves ${item.time_saved_per_week}h/week`);
-      } else if (item.category) {
-        highlights.push(`${escapeHtml(item.category)} agent`);
+      if (item.time_saved_per_week) {
+        highlights.push(`Saves ${item.time_saved_per_week}h every week`);
       }
-      if (item.ai_grade && item.runs_completed) {
-        highlights.push(`Grade ${escapeHtml(item.ai_grade)} with ${fmtNumber(item.runs_completed)} runs`);
-      } else if (item.ai_grade) {
-        highlights.push(`AI graded ${escapeHtml(item.ai_grade)}`);
-      } else if (item.runs_completed) {
+      if (item.runs_completed) {
         highlights.push(`${fmtNumber(item.runs_completed)} runs completed`);
       }
-      const integ = Array.isArray(item.integrations) ? item.integrations : [];
-      const autoLabel = humanize(item.automation_level);
-      if (autoLabel && integ.length > 0) {
-        highlights.push(`${autoLabel}, uses ${integ.slice(0, 3).map(escapeHtml).join(' + ')}`);
-      } else if (integ.length > 0) {
-        highlights.push(`Uses ${integ.slice(0, 3).map(escapeHtml).join(', ')}`);
-      } else if (autoLabel) {
-        highlights.push(autoLabel);
+      if (item.ai_grade) {
+        const gradeWord = { S: 'Legendary', A: 'Elite', B: 'Solid' }[item.ai_grade];
+        if (gradeWord) highlights.push(`${gradeWord} (Grade ${escapeHtml(item.ai_grade)})`);
+      }
+      if (item.running_since) {
+        const since = Date.parse(item.running_since);
+        if (Number.isFinite(since)) {
+          const days = Math.floor((Date.now() - since) / 86400000);
+          if (days > 30) highlights.push(`Running ${days} days`);
+        }
+      }
+      if (item.approx_monthly_tokens >= 100000) {
+        highlights.push(`${fmtNumber(item.approx_monthly_tokens)} tokens/mo`);
       }
       const highlightsSectionHtml = highlights.length ? `
           <section class="detail-section highlights-section">
