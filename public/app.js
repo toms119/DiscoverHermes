@@ -1036,10 +1036,10 @@
         : '';
       const gallerySectionHtml = hasGallerySection ? `
         <section class="detail-section gallery-section">
-          <h2>Gallery${galleryList.length ? ` <span class="tab-badge">${galleryList.length}/${GALLERY_MAX}</span>` : ''}</h2>
+          <h2>Gallery${galleryList.length ? ` <span class="tab-badge">${galleryList.length} photo${galleryList.length === 1 ? '' : 's'}</span>` : ''}</h2>
           ${galleryList.length === 0 && isAuthor
             ? `<p class="muted gallery-empty">Show off what you built — upload screenshots of the dashboard, terminal output, Telegram chat, whatever is most visual. Up to ${GALLERY_MAX} images.</p>`
-            : ''}
+            : (isAuthor && galleryList.length < GALLERY_MAX ? `<p class="muted gallery-hint">You can add up to ${GALLERY_MAX - galleryList.length} more image${GALLERY_MAX - galleryList.length === 1 ? '' : 's'}</p>` : '')}
           ${galleryList.length > 0 ? `
           <div class="gallery-carousel">
             <div class="carousel-track">
@@ -1109,7 +1109,7 @@
       const overviewPanel = `
         <div class="overview-panel">
           <section class="detail-section">
-            <h2>The story</h2>
+            <h2>Brain Analysis</h2>
             <div class="detail-story-wrap">${formatStory(item.story || item.description || '')}</div>
           </section>
 
