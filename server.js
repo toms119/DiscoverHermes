@@ -176,6 +176,8 @@ const DESIRED_COLUMNS = {
   // AI scoring fields — populated by daily automated review
   ai_score:              'INTEGER',       // 0-100 composite score
   ai_grade:              'TEXT',          // S, A, B, C, D
+  ai_score_pending:      'INTEGER',       // 0/1 — waiting for AI scoring
+  ai_rationale:          'TEXT',          // brief scoring explanation
   featured:              'INTEGER',       // 0/1 — AI pick for homepage
   featured_reason:       'TEXT',          // short explanation (max 200 chars)
   last_reviewed_at:      'TEXT',          // when AI last scored this
@@ -889,6 +891,7 @@ app.post('/api/submissions', smallJson, submitLimiter, submitLimiterDaily, (req,
     twitter_handle: normalizedHandle,
     website:        clean(b.website, 200),
     agent_framework: clean(b.agent_framework, 40) || null,
+    ai_score_pending: 1,  // New submissions await AI scoring
   };
   if (row.website && !isHttpUrl(row.website)) row.website = null;
 
@@ -1782,6 +1785,7 @@ app.patch('/api/submissions/:id/score', smallJson, (req, res) => {
   // Validate score range
   const aiScore = b.ai_score != null ? cleanInt(b.ai_score, 100) : null;
   const aiGrade = typeof b.ai_grade === 'string' && ['S','A','B','C','D'].includes(b.ai_grade) ? b.ai_grade : null;
+  const aiRationale = clean(b.ai_rationale, 500);
   const featured = cleanBool(b.featured);
   const featuredReason = clean(b.featured_reason, 200);
   
@@ -1791,9 +1795,9 @@ app.patch('/api/submissions/:id/score', smallJson, (req, res) => {
   
   const info = db.prepare(`
     UPDATE submissions
-    SET ai_score = ?, ai_grade = ?, featured = ?, featured_reason = ?, last_reviewed_at = ?
+    SET ai_score = ?, ai_grade = ?, ai_score_pending = 0, ai_rationale = ?, featured = ?, featured_reason = ?, last_reviewed_at = ?
     WHERE id = ?
-  `).run(aiScore, aiGrade, featured, featuredReason, now, id);
+  `).run(aiScore, aiGrade, aiRationale, featured, featuredReason, now, id);
   if (info.changes === 0) return res.status(404).json({ error: 'not found' });
 
   const row = db.prepare('SELECT * FROM submissions WHERE id = ?').get(id);

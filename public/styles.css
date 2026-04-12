@@ -1029,6 +1029,16 @@ a { color: inherit; text-decoration: none; }
 .grade-b { background: #3b82f6; color: #fff; }
 .grade-c { background: #f59e0b; color: #0b0e17; }
 .grade-d { background: #6b7280; color: #fff; }
+.grade-pending { 
+  background: linear-gradient(90deg, #4b5563, #6b7280, #4b5563);
+  background-size: 200% 100%;
+  animation: shimmer 2s infinite;
+  color: #9ca3af;
+}
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
 
 /* ---------- rank medals (top sort) ---------- */
 .rank-medal {

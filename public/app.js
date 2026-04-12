@@ -230,9 +230,6 @@
       chips.push(['framework', item.agent_framework]);
     }
     if (item.category) chips.push(['category', item.category]);
-    if (item.complexity_tier && item.complexity_tier !== 'beginner') {
-      chips.push(['complexity', humanize(item.complexity_tier)]);
-    }
     if (Array.isArray(item.integrations) && item.integrations[0]) {
       chips.push(['integration', item.integrations[0]]);
     }
@@ -321,16 +318,11 @@
       const galleryCount = (item.image_url ? 1 : 0) + gallery.length;
       const galleryBadge = galleryCount > 1
         ? `<span class="gallery-badge" title="${galleryCount} images">📷 ${galleryCount}</span>` : '';
-      // AI grade row — score leads on the left for maximum prominence
-      const gradeLabels = { S: 'Legendary', A: 'Elite', B: 'Solid', C: 'Rising', D: 'Starter' };
-      const gradeRow = item.ai_grade
-        ? `<div class="card-grade-row">
-             ${item.ai_score ? `<span class="card-grade-num">${item.ai_score}</span>` : ''}
-             <span class="grade-badge grade-${item.ai_grade.toLowerCase()}">${escapeHtml(item.ai_grade)}</span>
-             <span class="card-grade-label">${gradeLabels[item.ai_grade] || ''}</span>
-             <span class="card-grade-tag">AI Score</span>
-           </div>`
-        : '';
+      // AI grade badge — show pending or letter grade
+      const gradeBadge = item.ai_score_pending
+        ? `<span class="grade-badge grade-pending">Pending…</span>`
+        : item.ai_grade
+          ? `<span class="grade-badge grade-${item.ai_grade.toLowerCase()}">${escapeHtml(item.ai_grade)}</span>` : '';
       const achievs = achievementBadges(item);
       return `
         <div class="${cls.join(' ')}" data-href="/use-cases/${item.id}" data-id="${item.id}">
@@ -340,10 +332,9 @@
             <h3 class="card-title">${escapeHtml(item.title)}</h3>
             <p class="card-pitch">${escapeHtml(item.pitch || item.description || '')}</p>
             ${achievs ? `<div class="achiev-row">${achievs}</div>` : ''}
-            ${gradeRow}
             <div class="chip-row">${chipRow(item)}</div>
             <div class="card-foot">
-              <span class="card-author">${handleBlock(item)}${verifiedBadge(item)}</span>
+              <span class="card-author">${handleBlock(item)}${verifiedBadge(item)}${gradeBadge}</span>
               ${likeBtnHtml(item)}
             </div>
           </div>
@@ -398,17 +389,12 @@
         const res = await fetch('/api/submissions?' + params.toString());
         const items = await res.json();
         if (!Array.isArray(items) || items.length === 0) {
-          const emptyMsgs = {
-            score: 'No scored agents yet — new submissions get AI-graded within 24 hours.',
-            complexity: 'No agents with complexity scores yet.',
-          };
-          const emptyText = state.q || state.category
-            ? 'No matches found. Try a different filter.'
-            : emptyMsgs[state.sort] || 'Nothing here yet.';
           feedEl.innerHTML = `
             <div class="empty">
               <div class="empty-icon">◆</div>
-              <p>${emptyText}</p>
+              <p>${state.q || state.category
+                ? 'No matches found. Try a different filter.'
+                : 'Nothing here yet.'}</p>
               <a class="empty-cta" href="/submit">Be the first to post →</a>
             </div>`;
           return;
@@ -433,8 +419,8 @@
         if (state.sort === 'trending' && items.length > 1) {
           items.slice(0, 3).forEach((it) => trendingIds.add(it.id));
         }
-        // Assign rank positions for ranked sorts (medals on top 3)
-        if (['top', 'score', 'complexity'].includes(state.sort) && items.length > 1) {
+        // Assign rank positions for "top" sort (medals on top 3)
+        if (state.sort === 'top' && items.length > 1) {
           items.forEach((it, idx) => { it._rank = idx + 1; });
         }
         feedEl.innerHTML = items.map((item, i) => {
@@ -1121,19 +1107,22 @@
           </div>
         </div>` : '';
 
-      // AI score card — clean numeric display with grade badge
+      // AI score card — includes a deep-link to the full rankings page so
+      // visitors can jump from "this one got a 78/B+" to "how does that
+      // stack up against every other agent in the category?"
       const rankingsHref = item.category
         ? `/rankings?category=${encodeURIComponent(item.category)}`
         : '/rankings';
       const gradeLabels = { S: 'Legendary', A: 'Elite', B: 'Solid', C: 'Rising', D: 'Starter' };
       const aiCard = hasAiScore ? `
         <div class="side-card ai-card">
-          <h3>AI Score</h3>
+          <h3>⚔️ Agent Power Level</h3>
           <div class="ai-card-row">
             <span class="rank-grade grade-${item.ai_grade || 'C'}">${escapeHtml(item.ai_grade || '—')}</span>
             <div>
               <div class="ai-score-label">${escapeHtml(gradeLabels[item.ai_grade] || 'Unranked')}</div>
-              <div class="ai-score-num">${item.ai_score}<span class="ai-score-unit"> / 100</span></div>
+              <div class="ai-score-num">${item.ai_score}<span class="ai-score-unit"> XP</span></div>
+              <div class="xp-bar"><div class="xp-fill" style="width: ${item.ai_score}%"></div></div>
             </div>
           </div>
           ${item.featured && item.featured_reason ? `<p class="ai-featured">⭐ ${escapeHtml(item.featured_reason)}</p>` : ''}
@@ -1141,20 +1130,6 @@
             View leaderboard ↗
           </a>
         </div>` : '';
-
-      // Human score card — likes-based, matching AI card format
-      const likesCount = Number(item.likes) || 0;
-      const humanCard = `
-        <div class="side-card human-card">
-          <h3>Human Score</h3>
-          <div class="ai-card-row">
-            <span class="rank-grade human-grade">♥</span>
-            <div>
-              <div class="ai-score-label">${likesCount === 0 ? 'No votes yet' : likesCount === 1 ? '1 person loves this' : likesCount + ' people love this'}</div>
-              <div class="ai-score-num">${likesCount}<span class="ai-score-unit"> like${likesCount !== 1 ? 's' : ''}</span></div>
-            </div>
-          </div>
-        </div>`;
 
       // Build profile card (complexity, tiers, etc.). Satisfaction lived
       // here as a row of dots — removed, since it looked like a UI control
@@ -1337,15 +1312,8 @@
         highlights.push(`${fmtNumber(item.runs_completed)} runs completed`);
       }
       if (item.ai_grade) {
-        const gradeWord = { S: 'Legendary', A: 'Elite', B: 'Solid', C: 'Rising', D: 'Starter' }[item.ai_grade];
-        if (gradeWord) {
-          const scorePart = item.ai_score != null ? ` — ${item.ai_score}/100 AI Score` : '';
-          highlights.push(`${gradeWord} (Grade ${escapeHtml(item.ai_grade)})${scorePart}`);
-        }
-      }
-      if (item.complexity_tier) {
-        const cLabels = { beginner: 'Beginner-friendly', intermediate: 'Intermediate build', advanced: 'Advanced build', expert: 'Expert-level build' };
-        highlights.push(cLabels[item.complexity_tier] || humanize(item.complexity_tier));
+        const gradeWord = { S: 'Legendary', A: 'Elite', B: 'Solid' }[item.ai_grade];
+        if (gradeWord) highlights.push(`${gradeWord} (Grade ${escapeHtml(item.ai_grade)})`);
       }
       if (item.running_since) {
         const since = Date.parse(item.running_since);
@@ -1446,23 +1414,15 @@
       const heroCtaHtml = heroCtas.length
         ? `<div class="hero-cta-row">${heroCtas.join('')}</div>` : '';
 
-      // Hero metrics strip — lead with AI grade + complexity for instant scan,
-      // then pull impact numbers.
+      // Hero metrics strip — pull 2-3 best impact numbers into the hero
       const heroMetrics = [];
-      if (item.ai_grade) {
-        const gl = { S: 'Legendary', A: 'Elite', B: 'Solid', C: 'Rising', D: 'Starter' };
-        heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val"><span class="grade-inline grade-${item.ai_grade.toLowerCase()}">${escapeHtml(item.ai_grade)}</span>${item.ai_score != null ? ' ' + item.ai_score : ''}</span><span class="hero-metric-lbl">${escapeHtml(gl[item.ai_grade] || 'AI Score')}</span></div>`);
-      }
-      if (item.complexity_tier) {
-        heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${escapeHtml(humanize(item.complexity_tier))}</span><span class="hero-metric-lbl">complexity</span></div>`);
-      }
       if (item.time_saved_per_week) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${item.time_saved_per_week}h</span><span class="hero-metric-lbl">saved / week</span></div>`);
       if (item.runs_completed) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${fmtNumber(item.runs_completed)}</span><span class="hero-metric-lbl">runs</span></div>`);
-      if (item.approx_monthly_tokens && heroMetrics.length < 5) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${fmtNumber(item.approx_monthly_tokens)}</span><span class="hero-metric-lbl">tokens / mo</span></div>`);
-      if (item.hours_used && heroMetrics.length < 5) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${fmtNumber(item.hours_used)}</span><span class="hero-metric-lbl">hours used</span></div>`);
-      if (item.running_since && heroMetrics.length < 5) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${escapeHtml(item.running_since)}</span><span class="hero-metric-lbl">running since</span></div>`);
+      if (item.approx_monthly_tokens) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${fmtNumber(item.approx_monthly_tokens)}</span><span class="hero-metric-lbl">tokens / mo</span></div>`);
+      if (item.hours_used && heroMetrics.length < 3) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${fmtNumber(item.hours_used)}</span><span class="hero-metric-lbl">hours used</span></div>`);
+      if (item.running_since && heroMetrics.length < 3) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${escapeHtml(item.running_since)}</span><span class="hero-metric-lbl">running since</span></div>`);
       const heroMetricsHtml = heroMetrics.length
-        ? `<div class="hero-metrics-strip">${heroMetrics.slice(0, 5).join('')}</div>` : '';
+        ? `<div class="hero-metrics-strip">${heroMetrics.slice(0, 3).join('')}</div>` : '';
 
       root.innerHTML = `
         <a class="back-link" href="/">← Back to feed</a>
@@ -1489,7 +1449,6 @@
             ${rankCard}
             ${metricHtml}
             ${aiCard}
-            ${humanCard}
             ${buildCard}
             ${techCard}
             ${infraCard}
@@ -2119,101 +2078,82 @@
     let currentView = 'ai';
 
     async function loadRankings(view) {
-      const grid = document.getElementById('rankings-grid');
-      if (!grid) return;
+      const tbody = document.getElementById('rankings-body');
+      if (!tbody) return;
 
       const cfg = VIEWS[view] || VIEWS.ai;
-      grid.innerHTML = '<div class="loading">Loading rankings…</div>';
+      tbody.innerHTML = '<tr><td colspan="5" class="loading">Loading rankings…</td></tr>';
 
       try {
         const res = await fetch(cfg.url);
         const items = await res.json();
 
         if (!Array.isArray(items) || items.length === 0) {
-          grid.innerHTML = `<p class="empty">${cfg.empty}</p>`;
+          tbody.innerHTML = `<tr><td colspan="5" class="empty">${cfg.empty}</td></tr>`;
           return;
         }
 
-        grid.innerHTML = items.map((item, i) => renderRankCard(item, i + 1, view)).join('');
-
-        // Wire up like buttons
-        grid.querySelectorAll('.like-btn').forEach((btn) => {
-          btn.addEventListener('click', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            toggleLike(Number(btn.dataset.id), btn);
-          });
-        });
-        // Card click → detail
-        grid.querySelectorAll('.ranking-card[data-href]').forEach((card) => {
-          card.addEventListener('click', (e) => {
-            if (e.target.closest('a, button')) return;
-            const href = card.dataset.href;
-            if (href) location.href = href;
-          });
-        });
+        tbody.innerHTML = items.map((item, i) => renderRow(item, i + 1, view)).join('');
       } catch (err) {
-        grid.innerHTML = '<p class="empty">Failed to load rankings. Try refreshing.</p>';
+        tbody.innerHTML = '<tr><td colspan="5" class="empty">Failed to load rankings. Try refreshing.</td></tr>';
       }
     }
 
-    function renderRankCard(item, rank, view) {
-      const medals = ['🥇', '🥈', '🥉'];
-      const rankBadge = rank <= 3
-        ? `<span class="ranking-medal">${medals[rank - 1]}</span>`
-        : `<span class="ranking-num">#${rank}</span>`;
-
+    function renderRow(item, rank, view) {
       const likes = Number(item.likes) || 0;
-      const grade = item.ai_grade || '';
-      const score = item.ai_score || 0;
-      const glabels = { S: 'Legendary', A: 'Elite', B: 'Solid', C: 'Rising', D: 'Starter' };
+      const likesCell = `<td class="col-hide-mobile"><span class="rank-likes ${likes === 0 ? 'zero' : ''}">${likes}</span></td>`;
 
-      // Score display differs by view
-      let scoreBlock;
-      if (view === 'ai' && grade) {
-        scoreBlock = `<div class="ranking-score-block">
-          <span class="ranking-score-num">${score}</span>
-          <span class="grade-badge grade-${grade.toLowerCase()}">${escapeHtml(grade)}</span>
-          <span class="ranking-score-label">${escapeHtml(glabels[grade] || '')}</span>
-        </div>`;
+      let scoreCell;
+      if (view === 'ai') {
+        const grade = item.ai_grade || 'C';
+        const score = item.ai_score || 0;
+        scoreCell = `
+          <td>
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <span class="rank-grade grade-${grade}">${grade}</span>
+              <div>
+                <div class="rank-score">${score}</div>
+                <div class="score-bar"><div class="score-fill" style="width: ${score}%"></div></div>
+              </div>
+            </div>
+          </td>`;
       } else {
-        scoreBlock = `<div class="ranking-score-block">
-          <span class="ranking-likes-num">♥ ${likes}</span>
-          ${grade ? `<span class="grade-badge grade-${grade.toLowerCase()}">${escapeHtml(grade)}</span>` : ''}
-        </div>`;
+        const grade = item.ai_grade ? `<span class="rank-grade grade-${item.ai_grade}" title="AI grade">${item.ai_grade}</span>` : '';
+        scoreCell = `
+          <td>
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <span class="rank-likes" style="font-size: 22px;">${likes}</span>
+              ${grade}
+            </div>
+          </td>`;
       }
 
-      // Image
-      const imgHtml = item.image_url
-        ? `<div class="ranking-card-img"><img src="${escapeHtml(item.image_url)}" alt="" loading="lazy" referrerpolicy="no-referrer" /></div>`
-        : `<div class="ranking-card-img ranking-card-placeholder"><span class="brand-mark">◆</span></div>`;
-
-      // Author
-      const author = item.twitter_handle
-        ? `<a class="ranking-author" href="https://x.com/${escapeHtml(item.twitter_handle)}" target="_blank" rel="noopener">@${escapeHtml(item.twitter_handle)}</a>`
+      const meta = item.twitter_handle
+        ? `<a href="https://x.com/${escapeHtml(item.twitter_handle)}" target="_blank" rel="noopener" style="color: var(--accent); font-weight: 600;">@${escapeHtml(item.twitter_handle)}</a>`
         : item.display_name
-          ? `<span class="ranking-author">${escapeHtml(item.display_name)}</span>`
-          : '';
-
-      // Tags (max 2)
-      const tags = Array.isArray(item.tags) ? item.tags : [];
-      const tagHtml = tags.slice(0, 3).map(t => `<span class="chip">${escapeHtml(t)}</span>`).join('');
+          ? `<span>${escapeHtml(item.display_name)}</span>`
+          : `<span style="color: var(--text-dim);">Anonymous</span>`;
 
       return `
-        <div class="ranking-card${rank <= 3 ? ' ranking-top' : ''}" data-href="/use-cases/${item.id}">
-          ${rankBadge}
-          ${imgHtml}
-          <div class="ranking-card-body">
-            <a class="ranking-card-title" href="/use-cases/${item.id}">${escapeHtml(item.title)}</a>
-            ${item.pitch ? `<p class="ranking-card-pitch">${escapeHtml(item.pitch)}</p>` : ''}
-            ${scoreBlock}
-            ${tagHtml ? `<div class="chip-row">${tagHtml}</div>` : ''}
-            <div class="ranking-card-foot">
-              ${author}
-              ${likeBtnHtml(item)}
+        <tr class="${rank <= 3 ? 'rank-top-3' : ''}">
+          <td class="rank-row">${rank}</td>
+          <td>
+            <a class="rank-title" href="/use-cases/${item.id}">${escapeHtml(item.title)}</a>
+            <div class="chip-row" style="margin-top: 4px;">
+              ${item.tags && item.tags.slice(0, 2).map(t => `<span class="chip">${escapeHtml(t)}</span>`).join('') || ''}
             </div>
-          </div>
-        </div>`;
+          </td>
+          ${scoreCell}
+          ${likesCell}
+          <td class="rank-meta col-hide-mobile">${meta}</td>
+        </tr>
+      `;
+    }
+
+    function escapeHtml(s) {
+      return String(s ?? '').replace(/[&<>"']/g, (c) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      })[c]);
     }
 
     document.querySelectorAll('.rankings-tabs .tab').forEach((tab) => {
