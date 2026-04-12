@@ -1312,6 +1312,15 @@ app.get('/api/submissions/:id', (req, res) => {
   hydrated.total_agents = totalAgentsRow?.n ?? null;
   hydrated.total_scored = totalScoredRow?.n ?? null;
 
+  // Site averages for comparison on the score history chart
+  const avgRow = db.prepare(
+    `SELECT ROUND(AVG(ai_score), 1) AS avg_score,
+            ROUND(AVG(likes - COALESCE(dislikes, 0)), 1) AS avg_likes
+     FROM submissions WHERE approved = 1 AND ai_score IS NOT NULL`
+  ).get();
+  hydrated.site_avg_score = avgRow?.avg_score ?? null;
+  hydrated.site_avg_likes = avgRow?.avg_likes ?? null;
+
   const token = typeof req.query.token === 'string' ? req.query.token : null;
   if (token && verifyDeleteToken(id, token)) {
     hydrated.pending_updates = db.prepare(
@@ -1737,6 +1746,9 @@ app.get('/api/stats', (_req, res) => {
     models_in_use:
       one(`SELECT COUNT(DISTINCT model) AS n
            FROM submissions WHERE approved = 1 AND model IS NOT NULL AND model != ''`).n,
+    avg_ai_score:
+      one(`SELECT ROUND(AVG(ai_score), 1) AS n
+           FROM submissions WHERE approved = 1 AND ai_score IS NOT NULL`).n || 0,
   };
 
   // Daily new submissions across ALL time — we'll slice the last 30 for
@@ -1813,6 +1825,21 @@ app.get('/api/stats', (_req, res) => {
     by_plugin:       groupArray('plugins'),
     tool_use:        boolDist('tool_use'),
     rag:             boolDist('rag'),
+    score_distribution: many(
+      `SELECT
+         CASE
+           WHEN ai_score >= 80 THEN '80-100 (S/A)'
+           WHEN ai_score >= 60 THEN '60-79 (B)'
+           WHEN ai_score >= 40 THEN '40-59 (C)'
+           WHEN ai_score >= 20 THEN '20-39 (D)'
+           ELSE '0-19'
+         END AS label,
+         COUNT(*) AS count
+       FROM submissions
+       WHERE approved = 1 AND ai_score IS NOT NULL
+       GROUP BY label
+       ORDER BY MIN(ai_score) ASC`
+    ),
     daily,
     cumulative,
     cumulative_tokens: cumulativeTokens,

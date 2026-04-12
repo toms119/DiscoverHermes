@@ -985,7 +985,6 @@
   // Score history chart — draws AI score + net likes over time on a canvas
   function drawScoreHistory(canvas, item) {
     const history = item.score_history || [];
-    // If no history, show a single-point "current" view
     const points = history.length > 0 ? history : (item.ai_score != null ? [{
       ai_score: item.ai_score,
       likes: item.likes || 0,
@@ -994,6 +993,9 @@
     }] : []);
     if (points.length === 0) { canvas.parentElement.style.display = 'none'; return; }
 
+    const siteAvgScore = item.site_avg_score;
+    const siteAvgLikes = item.site_avg_likes;
+
     const dpr = window.devicePixelRatio || 1;
     const rect = canvas.getBoundingClientRect();
     canvas.width = rect.width * dpr;
@@ -1001,21 +1003,18 @@
     const ctx = canvas.getContext('2d');
     ctx.scale(dpr, dpr);
     const W = rect.width, H = rect.height;
-    const pad = { top: 30, right: 16, bottom: 30, left: 40 };
+    const pad = { top: 36, right: 20, bottom: 32, left: 44 };
     const plotW = W - pad.left - pad.right;
     const plotH = H - pad.top - pad.bottom;
 
-    // Extract series
     const aiScores = points.map(p => p.ai_score ?? null);
     const netLikes = points.map(p => (p.likes || 0) - (p.dislikes || 0));
     const dates = points.map(p => p.recorded_at);
 
-    // Y ranges
-    const aiMin = 0, aiMax = Math.max(100, ...aiScores.filter(v => v != null));
-    const likeMax = Math.max(5, ...netLikes.map(Math.abs));
+    const aiMax = 100;
+    const likeMax = Math.max(5, ...netLikes.map(Math.abs), Math.abs(siteAvgLikes || 0) + 2);
     const likeMin = -likeMax;
 
-    // Helpers
     const xFor = (i) => pad.left + (points.length === 1 ? plotW / 2 : (i / (points.length - 1)) * plotW);
     const yAi = (v) => pad.top + (1 - v / aiMax) * plotH;
     const yLike = (v) => pad.top + (1 - (v - likeMin) / (likeMax - likeMin)) * plotH;
@@ -1032,7 +1031,35 @@
       ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(W - pad.right, y); ctx.stroke();
     }
 
-    // Draw AI score line (orange)
+    // --- Site average reference lines (dashed) ---
+    if (siteAvgScore != null) {
+      const avgY = yAi(siteAvgScore);
+      ctx.save();
+      ctx.setLineDash([6, 4]);
+      ctx.strokeStyle = 'rgba(232, 131, 74, 0.4)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(pad.left, avgY); ctx.lineTo(W - pad.right, avgY); ctx.stroke();
+      ctx.restore();
+      ctx.fillStyle = 'rgba(232, 131, 74, 0.6)';
+      ctx.font = '10px -apple-system, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText(`avg ${siteAvgScore}`, pad.left + 4, avgY - 4);
+    }
+    if (siteAvgLikes != null) {
+      const avgY = yLike(siteAvgLikes);
+      ctx.save();
+      ctx.setLineDash([6, 4]);
+      ctx.strokeStyle = 'rgba(255, 64, 96, 0.35)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(pad.left, avgY); ctx.lineTo(W - pad.right, avgY); ctx.stroke();
+      ctx.restore();
+      ctx.fillStyle = 'rgba(255, 64, 96, 0.55)';
+      ctx.font = '10px -apple-system, sans-serif';
+      ctx.textAlign = 'right';
+      ctx.fillText(`avg ${siteAvgLikes}`, W - pad.right - 4, avgY - 4);
+    }
+
+    // --- Draw AI score line (orange) ---
     const validAi = aiScores.some(v => v != null);
     if (validAi) {
       ctx.strokeStyle = '#e8834a';
@@ -1047,15 +1074,24 @@
         else ctx.lineTo(x, y);
       });
       ctx.stroke();
-      // Dots
+      // Dots + value labels
       aiScores.forEach((v, i) => {
         if (v == null) return;
+        const x = xFor(i), y = yAi(v);
         ctx.fillStyle = '#e8834a';
-        ctx.beginPath(); ctx.arc(xFor(i), yAi(v), 4, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.fill();
+        // White outline
+        ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.lineWidth = 1;
+        ctx.stroke();
+        // Value label
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 12px -apple-system, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(Number.isInteger(v) ? String(v) : v.toFixed(1), x, y - 10);
       });
     }
 
-    // Draw likes line (pink/red)
+    // --- Draw likes line (pink) ---
     ctx.strokeStyle = '#ff4060';
     ctx.lineWidth = 2;
     ctx.lineJoin = 'round';
@@ -1067,24 +1103,32 @@
     });
     ctx.stroke();
     netLikes.forEach((v, i) => {
+      const x = xFor(i), y = yLike(v);
       ctx.fillStyle = '#ff4060';
-      ctx.beginPath(); ctx.arc(xFor(i), yLike(v), 3, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.lineWidth = 1;
+      ctx.stroke();
+      // Value label
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 11px -apple-system, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(String(v), x, y + 18);
     });
 
-    // Labels
+    // Header labels
     ctx.font = '11px -apple-system, sans-serif';
     ctx.fillStyle = '#e8834a';
     ctx.textAlign = 'left';
-    ctx.fillText('AI Score', pad.left + 4, pad.top - 8);
+    ctx.fillText('AI Score (0–100)', pad.left + 4, pad.top - 14);
     ctx.fillStyle = '#ff4060';
     ctx.textAlign = 'right';
-    ctx.fillText('Net Likes', W - pad.right - 4, pad.top - 8);
+    ctx.fillText('Net Likes', W - pad.right - 4, pad.top - 14);
 
     // Y axis labels
     ctx.fillStyle = 'rgba(255,255,255,0.4)';
     ctx.textAlign = 'right';
     ctx.font = '10px -apple-system, sans-serif';
-    ctx.fillText(String(aiMax), pad.left - 4, pad.top + 4);
+    ctx.fillText('100', pad.left - 4, pad.top + 4);
     ctx.fillText('0', pad.left - 4, pad.top + plotH + 4);
 
     // X axis dates
@@ -1094,8 +1138,7 @@
     if (dates.length >= 2) {
       [0, dates.length - 1].forEach(i => {
         const d = new Date(dates[i]);
-        const label = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-        ctx.fillText(label, xFor(i), H - 6);
+        ctx.fillText(d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), xFor(i), H - 6);
       });
     } else if (dates.length === 1) {
       const d = new Date(dates[0]);
@@ -2435,12 +2478,11 @@
     }
 
     const donutKeys = new Set(['by_deployment', 'by_trigger', 'by_memory', 'tool_use', 'rag']);
-    const horizontalKeys = new Set(['by_integration', 'by_tool', 'by_skill', 'by_plugin', 'by_model', 'by_host']);
-    const lineKeys = new Set(['daily', 'cumulative', 'cumulative_tokens']);
+    const horizontalKeys = new Set(['by_integration', 'by_tool', 'by_model']);
+    const lineKeys = new Set(['daily', 'cumulative']);
     const LINE_LABELS = {
       daily: 'new agents',
       cumulative: 'total agents',
-      cumulative_tokens: 'tokens processed',
     };
 
     loadHeadline().then((data) => {

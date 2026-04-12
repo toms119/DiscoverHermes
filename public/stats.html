@@ -50,42 +50,47 @@
 
   <section id="headline" class="headline">
     <div class="headline-stat"><span class="num" data-stat="total_agents">—</span><span class="lbl">agents</span></div>
+    <div class="headline-stat"><span class="num" data-stat="new_this_week">—</span><span class="lbl">new this week</span></div>
+    <div class="headline-stat"><span class="num" data-stat="verified_agents">—</span><span class="lbl">verified</span></div>
     <div class="headline-stat"><span class="num" data-stat="total_interactions">—</span><span class="lbl">interactions</span></div>
     <div class="headline-stat"><span class="num" data-stat="total_tasks">—</span><span class="lbl">tasks done</span></div>
+    <div class="headline-stat"><span class="num" data-stat="total_runs">—</span><span class="lbl">agent sessions</span></div>
     <div class="headline-stat"><span class="num" data-stat="total_hours_saved">—</span><span class="lbl">hours saved / wk</span></div>
-    <div class="headline-stat"><span class="num" data-stat="total_runs">—</span><span class="lbl">total runs</span></div>
+    <div class="headline-stat"><span class="num" data-stat="total_likes">—</span><span class="lbl">total likes</span></div>
+    <div class="headline-stat"><span class="num" data-stat="avg_ai_score">—</span><span class="lbl">avg AI score</span></div>
     <div class="headline-stat"><span class="num" data-stat="integrations_tracked">—</span><span class="lbl">integrations</span></div>
     <div class="headline-stat"><span class="num" data-stat="models_in_use">—</span><span class="lbl">models</span></div>
-    <div class="headline-stat"><span class="num" data-stat="total_likes">—</span><span class="lbl">total likes</span></div>
   </section>
 
   <main class="stats-grid">
+    <!-- Growth -->
     <div class="stats-card wide"><h3>Total agents on the portal</h3><canvas data-chart="cumulative"></canvas></div>
-    <div class="stats-card wide"><h3>Total tokens processed</h3><canvas data-chart="cumulative_tokens"></canvas></div>
     <div class="stats-card wide"><h3>New agents per day</h3><canvas data-chart="daily"></canvas></div>
     <div class="stats-card wide"><h3>Daily agents by framework</h3><canvas id="daily-framework-chart"></canvas></div>
-    <div class="stats-card"><h3>By category</h3><canvas data-chart="by_category"></canvas></div>
-    <div class="stats-card"><h3>By model</h3><canvas data-chart="by_model"></canvas></div>
-    <div class="stats-card"><h3>By provider</h3><canvas data-chart="by_provider"></canvas></div>
-    <div class="stats-card"><h3>By framework</h3><canvas data-chart="by_framework"></canvas></div>
-    <div class="stats-card"><h3>Deployment</h3><canvas data-chart="by_deployment"></canvas></div>
-    <div class="stats-card"><h3>Host</h3><canvas data-chart="by_host"></canvas></div>
+
+    <!-- What people are building -->
+    <div class="stats-card"><h3>Categories</h3><canvas data-chart="by_category"></canvas></div>
     <div class="stats-card"><h3>Platforms</h3><canvas data-chart="by_platform"></canvas></div>
+    <div class="stats-card"><h3>Models</h3><canvas data-chart="by_model"></canvas></div>
+    <div class="stats-card"><h3>Providers</h3><canvas data-chart="by_provider"></canvas></div>
+    <div class="stats-card"><h3>Frameworks</h3><canvas data-chart="by_framework"></canvas></div>
     <div class="stats-card"><h3>Trigger types</h3><canvas data-chart="by_trigger"></canvas></div>
-    <div class="stats-card"><h3>Memory</h3><canvas data-chart="by_memory"></canvas></div>
+
+    <!-- How they're built -->
     <div class="stats-card"><h3>Automation level</h3><canvas data-chart="by_automation"></canvas></div>
-    <div class="stats-card"><h3>Context tier</h3><canvas data-chart="by_context_tier"></canvas></div>
-    <div class="stats-card"><h3>Cost tier</h3><canvas data-chart="by_cost_tier"></canvas></div>
-    <div class="stats-card"><h3>Reliability</h3><canvas data-chart="by_reliability"></canvas></div>
-    <div class="stats-card"><h3>Source available</h3><canvas data-chart="by_source"></canvas></div>
-    <div class="stats-card"><h3>Time to build</h3><canvas data-chart="by_time_to_build"></canvas></div>
+    <div class="stats-card"><h3>Memory</h3><canvas data-chart="by_memory"></canvas></div>
     <div class="stats-card"><h3>Complexity</h3><canvas data-chart="by_complexity"></canvas></div>
+    <div class="stats-card"><h3>Reliability</h3><canvas data-chart="by_reliability"></canvas></div>
+    <div class="stats-card"><h3>Deployment</h3><canvas data-chart="by_deployment"></canvas></div>
     <div class="stats-card"><h3>Tool use</h3><canvas data-chart="tool_use"></canvas></div>
     <div class="stats-card"><h3>RAG</h3><canvas data-chart="rag"></canvas></div>
+
+    <!-- AI scoring -->
+    <div class="stats-card wide"><h3>AI score distribution</h3><canvas data-chart="score_distribution"></canvas></div>
+
+    <!-- Ecosystem -->
     <div class="stats-card wide"><h3>Top integrations</h3><canvas data-chart="by_integration"></canvas></div>
     <div class="stats-card wide"><h3>Top tools</h3><canvas data-chart="by_tool"></canvas></div>
-    <div class="stats-card wide"><h3>Top skills</h3><canvas data-chart="by_skill"></canvas></div>
-    <div class="stats-card wide"><h3>Top plugins</h3><canvas data-chart="by_plugin"></canvas></div>
   </main>
 
   <!-- Hermes GitHub Repo — separate from portal metrics -->
