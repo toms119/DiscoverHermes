@@ -163,14 +163,40 @@
         </div>`;
     }
     if (item.image_url) {
+      // If the image fails to load (404, CORS, etc.) swap to the branded
+      // placeholder instead of a blank box. Embed the placeholder HTML as
+      // a data attr so the onerror handler can use it directly.
+      const ph = placeholderHtml(item);
       return `
         <div class="card-media">
           <img src="${escapeHtml(item.image_url)}" alt=""
                loading="lazy" referrerpolicy="no-referrer"
-               onerror="this.parentElement.outerHTML='<div class=&quot;card-media placeholder&quot;>◆</div>'" />
+               onerror="this.parentElement.outerHTML=this.dataset.fallback"
+               data-fallback="${escapeHtml(ph)}" />
         </div>`;
     }
-    return `<div class="card-media placeholder">◆</div>`;
+    return placeholderHtml(item);
+  }
+
+  // Branded media fallback — used when a submission has no image_url (or the
+  // uploaded one 404s). Shows the agent's title initials over a hue-stable
+  // gradient derived from the title, so every card looks designed even when
+  // the author didn't provide a screenshot.
+  function placeholderHtml(item) {
+    const initials = ((item.title || '?')
+      .replace(/[^A-Za-z0-9 ]/g, '')
+      .trim()
+      .split(/\s+/)
+      .slice(0, 2)
+      .map((w) => w[0])
+      .join('')
+      .toUpperCase()) || '◆';
+    let h = 0;
+    for (let i = 0; i < (item.title || '').length; i++) {
+      h = (h * 31 + (item.title || '').charCodeAt(i)) >>> 0;
+    }
+    const hue = h % 360;
+    return `<div class="card-media placeholder" style="--ph-hue:${hue}"><span class="placeholder-initials">${escapeHtml(initials)}</span></div>`;
   }
 
   function handleBlock(item) {

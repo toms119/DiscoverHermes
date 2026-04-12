@@ -557,6 +557,13 @@ a { color: inherit; text-decoration: none; }
 }
 @media (max-width: 640px) {
   .feed { grid-template-columns: 1fr; }
+  /* First-principles mobile density: a 16/9 hero takes half the viewport
+     on a phone, so only ~1.5 cards fit per scroll. Flatten the media strip
+     and tighten the body so ~2.5 cards fit instead. */
+  .card-media { aspect-ratio: 21 / 9; }
+  .card-body  { padding: 12px 14px; }
+  .card-title { font-size: 16px; }
+  .placeholder-initials { font-size: 34px; }
 }
 
 .loading, .empty {
@@ -630,12 +637,36 @@ a { color: inherit; text-decoration: none; }
 .card:hover .card-media video {
   transform: scale(1.03);
 }
+/* Branded fallback — used when a submission has no image_url. The --ph-hue
+   custom property is set inline from the title hash so each card gets a
+   stable, unique tint while still feeling part of the same family. */
 .card-media.placeholder {
   display: grid;
   place-items: center;
-  color: var(--text-dim);
-  font-size: 34px;
-  background: linear-gradient(135deg, #1a1f2b, #10131a);
+  position: relative;
+  overflow: hidden;
+  background:
+    linear-gradient(135deg,
+      hsl(var(--ph-hue, 220) 45% 22%),
+      hsl(var(--ph-hue, 220) 45% 10%));
+}
+.card-media.placeholder::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    circle at 30% 30%,
+    rgba(255, 255, 255, 0.12),
+    transparent 60%);
+  pointer-events: none;
+}
+.placeholder-initials {
+  position: relative;          /* sit above the radial ::before */
+  font-size: 44px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: rgba(255, 255, 255, 0.9);
+  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.45);
 }
 
 /* Text zone — below image, flex-column for internal layout */
