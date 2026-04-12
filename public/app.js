@@ -4,6 +4,10 @@
 // whichever page is loaded (feed, detail, stats, submit).
 
 (function () {
+  // Anti-bot: generate a like token after a short delay so automated
+  // scripts that POST immediately after page load get silently rejected.
+  setTimeout(() => { window._likeToken = Date.now().toString(36); }, 1500);
+
   // ---------- utilities shared across pages ----------
 
   function escapeHtml(s) {
@@ -134,7 +138,7 @@
       const res = await fetch(`/api/submissions/${id}/like`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ unlike: wasLiked }),
+        body: JSON.stringify({ unlike: wasLiked, _t: window._likeToken }),
       });
       if (res.ok) {
         const data = await res.json();
@@ -919,7 +923,8 @@
 
       const hasMetrics =
         item.running_since || item.time_saved_per_week || item.runs_completed ||
-        item.hours_used || item.approx_monthly_tokens;
+        item.hours_used || item.approx_monthly_tokens ||
+        item.total_interactions || item.active_users || item.tasks_completed;
 
       // v3: the "Build details" block rolls up the structured tier/enum
       // fields the Hermes agent asks about during the interview.
@@ -1039,6 +1044,7 @@
                <div class="updates-empty-icon">◆</div>
                <div class="updates-empty-title">No updates yet</div>
                <p class="muted">Check back — this agent is still evolving. Builders post what's new here every week.</p>
+               <p class="muted" style="margin-top:8px;font-size:12px;opacity:0.7">💡 Builders: automate a cron job to share weekly updates and watch your score climb.</p>
              </div>`;
 
         const pendingHtml = (isAuthor && pending.length)
@@ -1174,6 +1180,9 @@
         <div class="side-card metric-card">
           <h3>At a glance</h3>
           <div class="side-metrics">
+            ${item.total_interactions ? `<div class="side-metric"><span class="side-metric-val">${fmtNumber(item.total_interactions)}</span><span class="side-metric-lbl">interactions</span></div>` : ''}
+            ${item.tasks_completed ? `<div class="side-metric"><span class="side-metric-val">${fmtNumber(item.tasks_completed)}</span><span class="side-metric-lbl">tasks done</span></div>` : ''}
+            ${item.active_users ? `<div class="side-metric"><span class="side-metric-val">${fmtNumber(item.active_users)}</span><span class="side-metric-lbl">active users</span></div>` : ''}
             ${item.time_saved_per_week ? `<div class="side-metric"><span class="side-metric-val">${item.time_saved_per_week}h</span><span class="side-metric-lbl">saved / week</span></div>` : ''}
             ${item.runs_completed ? `<div class="side-metric"><span class="side-metric-val">${fmtNumber(item.runs_completed)}</span><span class="side-metric-lbl">runs</span></div>` : ''}
             ${item.hours_used ? `<div class="side-metric"><span class="side-metric-val">${fmtNumber(item.hours_used)}</span><span class="side-metric-lbl">hours used</span></div>` : ''}
@@ -1302,11 +1311,19 @@
       const hasGallerySection = galleryList.length > 0 || isAuthor;
       const carouselSlides = galleryList.map((url, i) => `
         <div class="carousel-slide${i === 0 ? ' active' : ''}" data-idx="${i}">
-          <img src="${escapeHtml(url)}" alt="Gallery image ${i + 1}" loading="lazy" referrerpolicy="no-referrer" />
+          <img src="${escapeHtml(url)}" alt="Gallery image ${i + 1}" referrerpolicy="no-referrer" />
           ${isAuthor ? `<button class="gallery-remove carousel-remove" type="button" data-gallery-url="${escapeHtml(url)}" title="Remove image">×</button>` : ''}
         </div>`).join('');
       const carouselDots = galleryList.length > 1
         ? `<div class="carousel-dots">${galleryList.map((_, i) => `<button class="carousel-dot${i === 0 ? ' active' : ''}" data-idx="${i}" type="button"></button>`).join('')}</div>`
+        : '';
+      // Single image: show a simple image instead of the full carousel to
+      // avoid the black-flash from an empty carousel track.
+      const singleImageHtml = galleryList.length === 1
+        ? `<div class="gallery-single">
+             <img src="${escapeHtml(galleryList[0])}" alt="Gallery image" referrerpolicy="no-referrer" />
+             ${isAuthor ? `<button class="gallery-remove" type="button" data-gallery-url="${escapeHtml(galleryList[0])}" title="Remove image">×</button>` : ''}
+           </div>`
         : '';
       const gallerySectionHtml = hasGallerySection ? `
         <section class="detail-section gallery-section">
@@ -1314,14 +1331,14 @@
           ${galleryList.length === 0 && isAuthor
             ? `<p class="muted gallery-empty">Show off what you built — upload screenshots of the dashboard, terminal output, Telegram chat, whatever is most visual. Up to ${GALLERY_MAX} images.</p>`
             : (isAuthor && galleryList.length < GALLERY_MAX ? `<p class="muted gallery-hint">You can add up to ${GALLERY_MAX - galleryList.length} more image${GALLERY_MAX - galleryList.length === 1 ? '' : 's'}</p>` : '')}
-          ${galleryList.length > 0 ? `
+          ${galleryList.length === 1 ? singleImageHtml : ''}
+          ${galleryList.length > 1 ? `
           <div class="gallery-carousel">
             <div class="carousel-track">
               ${carouselSlides}
             </div>
-            ${galleryList.length > 1 ? `
             <button class="carousel-prev" type="button" aria-label="Previous">&#8249;</button>
-            <button class="carousel-next" type="button" aria-label="Next">&#8250;</button>` : ''}
+            <button class="carousel-next" type="button" aria-label="Next">&#8250;</button>
             ${carouselDots}
           </div>` : ''}
           ${galleryAddSlotHtml ? `<div class="gallery-add-wrap">${galleryAddSlotHtml}</div>` : ''}
@@ -1489,9 +1506,12 @@
 
       // Hero metrics strip — pull 2-3 best impact numbers into the hero
       const heroMetrics = [];
+      if (item.total_interactions) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${fmtNumber(item.total_interactions)}</span><span class="hero-metric-lbl">interactions</span></div>`);
+      if (item.tasks_completed) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${fmtNumber(item.tasks_completed)}</span><span class="hero-metric-lbl">tasks done</span></div>`);
       if (item.time_saved_per_week) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${item.time_saved_per_week}h</span><span class="hero-metric-lbl">saved / week</span></div>`);
-      if (item.runs_completed) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${fmtNumber(item.runs_completed)}</span><span class="hero-metric-lbl">runs</span></div>`);
-      if (item.approx_monthly_tokens) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${fmtNumber(item.approx_monthly_tokens)}</span><span class="hero-metric-lbl">tokens / mo</span></div>`);
+      if (item.runs_completed && heroMetrics.length < 3) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${fmtNumber(item.runs_completed)}</span><span class="hero-metric-lbl">runs</span></div>`);
+      if (item.active_users && heroMetrics.length < 3) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${fmtNumber(item.active_users)}</span><span class="hero-metric-lbl">active users</span></div>`);
+      if (item.approx_monthly_tokens && heroMetrics.length < 3) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${fmtNumber(item.approx_monthly_tokens)}</span><span class="hero-metric-lbl">tokens / mo</span></div>`);
       if (item.hours_used && heroMetrics.length < 3) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${fmtNumber(item.hours_used)}</span><span class="hero-metric-lbl">hours used</span></div>`);
       if (item.running_since && heroMetrics.length < 3) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${escapeHtml(item.running_since)}</span><span class="hero-metric-lbl">running since</span></div>`);
       const heroMetricsHtml = heroMetrics.length
@@ -1739,6 +1759,30 @@
             if (ev.key === 'ArrowRight' && allUrls.length > 1) { lbIdx = (lbIdx + 1) % allUrls.length; lbImg.src = allUrls[lbIdx]; }
           }
           document.addEventListener('keydown', onKey);
+          document.body.appendChild(overlay);
+        });
+      }
+
+      // Lightbox for single-image gallery
+      const singleGallery = root.querySelector('.gallery-single img');
+      if (singleGallery) {
+        singleGallery.addEventListener('click', () => {
+          const overlay = document.createElement('div');
+          overlay.className = 'lightbox-overlay';
+          const lbImg = document.createElement('img');
+          lbImg.className = 'lightbox-img';
+          lbImg.src = singleGallery.src;
+          lbImg.alt = 'Full size';
+          overlay.appendChild(lbImg);
+          const closeBtn = document.createElement('button');
+          closeBtn.className = 'lightbox-close';
+          closeBtn.innerHTML = '&times;';
+          closeBtn.addEventListener('click', (ev) => { ev.stopPropagation(); overlay.remove(); });
+          overlay.appendChild(closeBtn);
+          overlay.addEventListener('click', (ev) => { if (ev.target === overlay) overlay.remove(); });
+          document.addEventListener('keydown', function onKey(ev) {
+            if (ev.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', onKey); }
+          });
           document.body.appendChild(overlay);
         });
       }

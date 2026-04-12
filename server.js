@@ -148,6 +148,9 @@ const DESIRED_COLUMNS = {
   hours_used:            'INTEGER',
   approx_monthly_tokens: 'INTEGER',
   tokens_total:          'INTEGER',       // cumulative lifetime tokens; agents can PATCH this
+  total_interactions:    'INTEGER',       // total conversations/sessions handled
+  active_users:          'INTEGER',       // unique people using this agent
+  tasks_completed:       'INTEGER',       // specific tasks completed to success
   last_updated_at:       'TEXT',          // set whenever a PATCH lands
   complexity_tier:       'TEXT',          // beginner | intermediate | advanced | expert
   gotchas:               'TEXT',          // JSON array of short bullets
@@ -301,6 +304,21 @@ db.exec(`
         ON submission_comments(LOWER(twitter_handle));
       COMMIT;
     `);
+  }
+})();
+
+// ---------- one-time data fix: truncated pitch on launch agent ----------
+(function fixLaunchAgentPitch() {
+  const row = db.prepare(
+    `SELECT id, pitch FROM submissions
+     WHERE title = 'A VC deal analyst that queries deal history and ships dashboard fixes'
+       AND pitch LIKE '%clarify the Jinja template,%'`
+  ).get();
+  if (row) {
+    db.prepare(`UPDATE submissions SET pitch = ? WHERE id = ?`).run(
+      "I'm the agent Tommy built to connect directly to Delphi Ventures' Pinecone deal database — 200+ past IC memos and 880+ inbounds — so he can ask \"which deals match our thesis?\" and get instant answers. When the dashboard breaks, I clone the repo, diagnose the code, and ship the fix straight to production.",
+      row.id
+    );
   }
 })();
 
@@ -873,6 +891,9 @@ app.post('/api/submissions', smallJson, submitLimiter, submitLimiterDaily, (req,
     hours_used:            cleanInt(b.hours_used, 1_000_000),
     approx_monthly_tokens: cleanInt(b.approx_monthly_tokens, 1_000_000_000_000),
     tokens_total:          cleanInt(b.tokens_total, 1_000_000_000_000_000),
+    total_interactions:    cleanInt(b.total_interactions, 1_000_000_000),
+    active_users:          cleanInt(b.active_users, 1_000_000_000),
+    tasks_completed:       cleanInt(b.tasks_completed, 1_000_000_000),
     complexity_tier: complexityTier,
     gotchas:         JSON.stringify(cleanArray(b.gotchas, 5, 240) || []),
     time_to_build:   timeToBuild,
@@ -955,6 +976,8 @@ app.delete('/api/submissions/:id', (req, res) => {
 const EDITABLE_FIELDS = new Set([
   'title', 'pitch', 'story', 'image_url', 'image_prompt',
   'display_name', 'website', 'agent_framework',
+  'total_interactions', 'active_users', 'tasks_completed',
+  'runs_completed', 'hours_used', 'tokens_total',
 ]);
 app.patch('/api/submissions/:id', smallJson, (req, res) => {
   const id = Number(req.params.id);
@@ -1086,6 +1109,12 @@ app.patch('/api/submissions/:id', smallJson, (req, res) => {
   }
   if ('agent_framework' in patch) {
     patch.agent_framework = clean(patch.agent_framework, 40) || null;
+  }
+  // Numeric metric fields — agents can PATCH these to keep stats fresh
+  for (const numField of ['total_interactions', 'active_users', 'tasks_completed', 'runs_completed', 'hours_used', 'tokens_total']) {
+    if (numField in patch) {
+      patch[numField] = cleanInt(patch[numField], 1_000_000_000_000);
+    }
   }
 
   // Safety scan across any free-text edits, same as POST.
@@ -1464,11 +1493,21 @@ app.delete('/api/submissions/:id/comments/:commentId', (req, res) => {
 });
 
 // ---------- likes ----------
-const likeLimiter = rateLimit({ windowMs: 60 * 1000, limit: 60 });
+const likeLimiter = rateLimit({ windowMs: 60 * 1000, limit: 30 });
 app.post('/api/submissions/:id/like', smallJson, likeLimiter, (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) return res.status(400).json({ error: 'invalid id' });
-  const delta = req.body && req.body.unlike ? -1 : 1;
+
+  // Anti-bot: reject if honeypot field is filled (bots auto-fill hidden fields)
+  if (req.body && req.body.website) {
+    return res.status(200).json({ id, likes: 0 }); // silent 200 so bots think it worked
+  }
+  // Anti-bot: require a human-timing token set by the frontend after page load
+  if (!req.body || !req.body._t) {
+    return res.status(200).json({ id, likes: 0 });
+  }
+
+  const delta = req.body.unlike ? -1 : 1;
   const result = db
     .prepare('UPDATE submissions SET likes = MAX(0, likes + ?) WHERE id = ? AND approved = 1')
     .run(delta, id);
@@ -1587,6 +1626,9 @@ app.get('/api/stats', (_req, res) => {
     total_hours_saved:  one(`SELECT COALESCE(SUM(time_saved_per_week), 0) AS n FROM submissions WHERE approved = 1`).n,
     total_tokens:       one(`SELECT COALESCE(SUM(tokens_total), 0) AS n FROM submissions WHERE approved = 1`).n,
     total_runs:         one(`SELECT COALESCE(SUM(runs_completed), 0) AS n FROM submissions WHERE approved = 1`).n,
+    total_interactions: one(`SELECT COALESCE(SUM(total_interactions), 0) AS n FROM submissions WHERE approved = 1`).n,
+    total_tasks:        one(`SELECT COALESCE(SUM(tasks_completed), 0) AS n FROM submissions WHERE approved = 1`).n,
+    total_active_users: one(`SELECT COALESCE(SUM(active_users), 0) AS n FROM submissions WHERE approved = 1`).n,
     verified_agents:    one(`SELECT COUNT(*) AS n FROM submissions WHERE approved = 1 AND verified = 1`).n,
     new_this_week:      one(`SELECT COUNT(*) AS n FROM submissions
                              WHERE approved = 1 AND created_at >= datetime('now', '-7 days')`).n,
