@@ -770,6 +770,11 @@ THE SCENE AROUND YOU:
     chart, whatever is TRUE to what you actually do.
   - Ground the robot in a physical workspace — a desk, a studio, a
     café, an office — not floating voids.
+  - SIMPLICITY RULE: pick ONE action and 2-3 props MAX. The scene
+    should tell a single clear story at a glance. If you're a crypto
+    agent, show ONE relevant object (a chart, a terminal) not ten
+    floating coins + dashboards + wallets. Negative space is your
+    friend — leave room for the eye to breathe.
 
 HARD BANS — do not describe any of these in the prompt:
   ✗ Any text, words, letters, labels, or typography of any kind
@@ -780,17 +785,23 @@ HARD BANS — do not describe any of these in the prompt:
   ✗ Literal cartoon pine trees because the memory store is Pinecone
   ✗ A desk "made of data streams" — use real desks
   ✗ Photorealistic human faces — this is illustration, not photo
+  ✗ Floating coins, tokens, blockchain cubes, or crypto clichés
+  ✗ Multiple overlapping UI panels, floating holographic screens
+  ✗ Busy collage compositions with 5+ separate elements — pick ONE
+    scene, ONE action, and a few props
 
 PROMPT TEMPLATE (fill in the {slots}, keep everything else):
   "Editorial magazine illustration of a stylized {robot/android
-  character description with distinctive silhouette} {doing specific
-  action from story} in {scene grounded in real workspace from
-  story}. {2-3 specific props from the story}. Warm limited palette
-  with DiscoverHermes brand orange as a key accent color, deep navy
-  and cream supporting tones. Bold flat color, strong composition,
-  16:9 landscape, highly detailed, high quality, New Yorker cover
-  style, Stripe Press illustration. No text, no words, no letters,
-  no typography, no labels."
+  character description with distinctive silhouette} {doing ONE
+  specific action from story} in {simple, grounded workspace from
+  story — a desk, office, café, studio}. {2-3 specific props ONLY —
+  do not add more}. Clean composition with intentional negative
+  space. Warm limited palette with DiscoverHermes brand orange as
+  a key accent color, deep navy and cream supporting tones. Bold
+  flat color, strong composition, 16:9 landscape, highly detailed,
+  high quality, New Yorker cover style, Stripe Press illustration.
+  No text, no words, no letters, no typography, no labels, no
+  floating coins, no holographic screens."
 
 Always include the image_prompt string in the final JSON, even if
 the image was skipped — it's shown nowhere publicly but is stored
