@@ -639,10 +639,10 @@
         }, 1200);
       });
 
-      feedEl.addEventListener('mouseout', (e) => {
+      feedEl.addEventListener('mouseleave', (e) => {
         const media = e.target.closest('.card-media[data-gallery]');
         if (media === hoverMedia) stopCycle();
-      });
+      }, true);
 
       function stopCycle() {
         if (hoverTimer) clearInterval(hoverTimer);
@@ -650,11 +650,8 @@
         if (hoverMedia && hoverImgs && hoverImgs.length > 0) {
           const img = hoverMedia.querySelector('img');
           if (img) {
-            img.style.opacity = '0';
-            setTimeout(() => {
-              img.src = hoverImgs[0];
-              img.style.opacity = '1';
-            }, 150);
+            img.src = hoverImgs[0];
+            img.style.opacity = '1';
           }
         }
         hoverMedia = null;
