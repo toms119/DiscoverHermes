@@ -698,6 +698,7 @@ a { color: inherit; text-decoration: none; }
   aspect-ratio: 16 / 9;
   background: #0a0c11;
   overflow: hidden;
+  position: relative;
 }
 .card-media img,
 .card-media video {
