@@ -1094,29 +1094,57 @@
           return out;
         }
 
-        function scoreImportance(s) {
+        function scoreImportance(s, idx, totalSentences) {
           let n = 0;
-          if (/\d/.test(s)) n += 3;
+          // Numbers = concrete data (runs, deals, indices, dimensions)
+          const numCount = (s.match(/\d+/g) || []).length;
+          n += Math.min(numCount, 3) * 2;
+          // Named entities — capitalized words that aren't sentence starters
           const caps = (s.match(/\b[A-Z][a-z]{2,}/g) || []).length;
-          n += Math.min(caps, 3) * 2;
-          if (s.length >= 30 && s.length <= 150) n += 1;
-          if (s.length < 20) n -= 1;
+          n += Math.min(caps, 4);
+          // Outcome/action verbs = impactful sentences
+          if (/\b(built|shipped|scores?|surface|delivers?|queries?|pull|automates?|replaced?|saved?)\b/i.test(s)) n += 4;
+          // Unique/differentiating language
+          if (/\b(different|unique|unlike|only|first|not a|remember|persist)/i.test(s)) n += 3;
+          // Integration/tool mentions = concrete architecture
+          if (/\b(Pinecone|Telegram|Slack|Railway|GitHub|Express|SQLite|cron|API|database|vector)\b/i.test(s)) n += 2;
+          // Prefer first sentence of each paragraph (paragraph openers)
+          if (idx === 0) n += 2;
+          // Sweet spot length — not too short, not too long
+          if (s.length >= 50 && s.length <= 180) n += 2;
+          if (s.length < 25) n -= 3;
+          // Penalize meta/filler sentences
+          if (/\b(straightforward|basically|simply|just)\b/i.test(s)) n -= 2;
           return n;
         }
 
-        // Collect all sentences across all paragraphs to find the two best.
-        const allSentences = rawParas.flatMap(tokenizeSentences);
+        // Collect all sentences with paragraph index for context.
+        const allSentences = [];
+        rawParas.forEach((para, pIdx) => {
+          tokenizeSentences(para).forEach((s, sIdx) => {
+            allSentences.push({ ...s, paraIdx: pIdx, sentIdx: sIdx });
+          });
+        });
         const boldSet = new Set();
 
         if (allSentences.length > 0) {
-          // Always bold the first sentence.
+          // Always bold the first sentence of the story (the lede).
           boldSet.add(allSentences[0].text);
           if (allSentences.length > 1) {
-            // Score all remaining sentences, pick top 2 for 3 total bolded.
-            const scored = allSentences.slice(1).map(s => ({ s, score: scoreImportance(s.text) }));
+            // Score remaining sentences, pick top 2 for 3 total bolded.
+            // Prefer spreading bolds across different paragraphs.
+            const scored = allSentences.slice(1).map(s => ({
+              s, score: scoreImportance(s.text, s.sentIdx, allSentences.length)
+            }));
             scored.sort((a, b) => b.score - a.score);
+            // Pick best sentence
             boldSet.add(scored[0].s.text);
-            if (scored.length > 1) boldSet.add(scored[1].s.text);
+            if (scored.length > 1) {
+              // For the 3rd bold, prefer a different paragraph than the 2nd
+              const secondPara = scored[0].s.paraIdx;
+              const diffPara = scored.slice(1).find(x => x.s.paraIdx !== secondPara);
+              boldSet.add((diffPara || scored[1]).s.text);
+            }
           }
         }
 
