@@ -261,6 +261,7 @@
     // Read any deep-link filters from the URL on first load, e.g. a visitor
     // clicked a "Pinecone" chip on a detail page and landed on /?integration=Pinecone.
     const initialParams = new URLSearchParams(location.search);
+    const PAGE_SIZE = 24;
     const state = {
       sort:        'trending',
       category:    '',
@@ -269,6 +270,9 @@
       integration: initialParams.get('integration') || '',
       tool:        initialParams.get('tool') || '',
       framework:   initialParams.get('framework') || '',
+      offset:      0,
+      allLoaded:   false,
+      loading:     false,
     };
     let debounceTimer = null;
 
@@ -367,20 +371,35 @@
     }
 
     async function loadFeed() {
-      // Skeleton loading cards — shimmer while the API responds
-      feedEl.classList.remove('feed-loaded');
-      feedEl.innerHTML = Array.from({ length: 6 }, () => `
-        <div class="card skeleton">
-          <div class="card-media skeleton-shimmer"></div>
-          <div class="card-body">
-            <div class="skeleton-line" style="width:80%"></div>
-            <div class="skeleton-line" style="width:60%"></div>
-            <div class="skeleton-line short" style="width:40%"></div>
-          </div>
-        </div>`).join('');
-      renderFilterBanner();
+      state.offset = 0;
+      state.allLoaded = false;
+      await fetchFeedPage();
+    }
+
+    async function fetchFeedPage() {
+      if (state.loading || state.allLoaded) return;
+      const isFirstPage = state.offset === 0;
+      state.loading = true;
+
+      if (isFirstPage) {
+        // Skeleton loading cards — shimmer while the API responds
+        feedEl.classList.remove('feed-loaded');
+        feedEl.innerHTML = Array.from({ length: 6 }, () => `
+          <div class="card skeleton">
+            <div class="card-media skeleton-shimmer"></div>
+            <div class="card-body">
+              <div class="skeleton-line" style="width:80%"></div>
+              <div class="skeleton-line" style="width:60%"></div>
+              <div class="skeleton-line short" style="width:40%"></div>
+            </div>
+          </div>`).join('');
+        renderFilterBanner();
+      }
+
       const params = new URLSearchParams();
       params.set('sort', state.sort);
+      params.set('limit', String(PAGE_SIZE));
+      params.set('offset', String(state.offset));
       if (state.category) params.set('category', state.category);
       if (state.q) params.set('q', state.q);
       if (state.verified) params.set('verified', '1');
@@ -390,7 +409,8 @@
       try {
         const res = await fetch('/api/submissions?' + params.toString());
         const items = await res.json();
-        if (!Array.isArray(items) || items.length === 0) {
+
+        if (!Array.isArray(items) || (items.length === 0 && isFirstPage)) {
           feedEl.innerHTML = `
             <div class="empty">
               <div class="empty-icon">◆</div>
@@ -399,49 +419,82 @@
                 : 'Nothing here yet.'}</p>
               <a class="empty-cta" href="/submit">Be the first to post →</a>
             </div>`;
+          state.allLoaded = true;
+          state.loading = false;
           return;
         }
-        // Compute percentiles for achievement badges
-        if (items.length > 1) {
+
+        // If we got fewer than PAGE_SIZE, there are no more pages
+        if (items.length < PAGE_SIZE) state.allLoaded = true;
+
+        // Compute percentiles for achievement badges (first page only,
+        // since percentiles are relative to the visible set)
+        if (isFirstPage && items.length > 1) {
           const sortedLikes = items.map((it) => it.likes || 0).sort((a, b) => b - a);
           const sortedAi = items.filter((it) => it.ai_score != null).map((it) => it.ai_score).sort((a, b) => b - a);
           items.forEach((it) => {
-            // Likes percentile: what % of agents have fewer likes than this one
             const likesAbove = sortedLikes.filter((l) => l > (it.likes || 0)).length;
             it._likePct = (likesAbove / items.length) * 100;
-            // AI percentile
             if (it.ai_score != null && sortedAi.length > 1) {
               const aiAbove = sortedAi.filter((s) => s > it.ai_score).length;
               it._aiPct = (aiAbove / sortedAi.length) * 100;
             }
           });
         }
-        // Mark top 3 as trending when viewing the trending sort
+
+        // Mark top 3 as trending when viewing the trending sort (first page)
         const trendingIds = new Set();
-        if (state.sort === 'trending' && items.length > 1) {
+        if (isFirstPage && state.sort === 'trending' && items.length > 1) {
           items.slice(0, 3).forEach((it) => trendingIds.add(it.id));
         }
-        // Assign rank positions for "top" sort (medals on top 3)
-        if (state.sort === 'top' && items.length > 1) {
-          items.forEach((it, idx) => { it._rank = idx + 1; });
+        // Assign rank positions for "top" / "score" / "complexity" sorts
+        if (['top', 'score', 'complexity'].includes(state.sort)) {
+          items.forEach((it, idx) => { it._rank = state.offset + idx + 1; });
         }
-        feedEl.innerHTML = items.map((item, i) => {
+
+        const cardsHtml = items.map((item, i) => {
           const extra = trendingIds.has(item.id) ? 'is-trending' : '';
-          return cardHtml(item, extra).replace('<div class="card', `<div style="--i:${i}" class="card`);
+          const idx = state.offset + i;
+          return cardHtml(item, extra).replace('<div class="card', `<div style="--i:${idx % PAGE_SIZE}" class="card`);
         }).join('');
+
+        if (isFirstPage) {
+          feedEl.innerHTML = cardsHtml;
+        } else {
+          // Remove existing sentinel before appending
+          const oldSentinel = feedEl.querySelector('.feed-sentinel');
+          if (oldSentinel) oldSentinel.remove();
+          feedEl.insertAdjacentHTML('beforeend', cardsHtml);
+        }
         feedEl.classList.add('feed-loaded');
+
+        // Append sentinel for infinite scroll if more pages exist
+        if (!state.allLoaded) {
+          const sentinel = document.createElement('div');
+          sentinel.className = 'feed-sentinel';
+          feedEl.appendChild(sentinel);
+        }
+
         // Store feed IDs for next/prev navigation on detail pages
         try {
-          sessionStorage.setItem('dh_feed_ids', JSON.stringify(items.map(it => it.id)));
+          const existing = isFirstPage ? [] : JSON.parse(sessionStorage.getItem('dh_feed_ids') || '[]');
+          const merged = [...existing, ...items.map(it => it.id)];
+          sessionStorage.setItem('dh_feed_ids', JSON.stringify(merged));
         } catch { /* quota exceeded — skip */ }
+
+        // Advance offset for next page
+        state.offset += items.length;
       } catch {
-        feedEl.innerHTML = `
-          <div class="empty">
-            <div class="empty-icon">◆</div>
-            <p>Couldn't load the feed.</p>
-            <button class="empty-cta" onclick="location.reload()">Refresh →</button>
-          </div>`;
+        if (isFirstPage) {
+          feedEl.innerHTML = `
+            <div class="empty">
+              <div class="empty-icon">◆</div>
+              <p>Couldn't load the feed.</p>
+              <button class="empty-cta" onclick="location.reload()">Refresh →</button>
+            </div>`;
+        }
       }
+      state.loading = false;
     }
 
     // Like click — event delegation (prevent navigation to detail page)
@@ -710,6 +763,26 @@
         } catch { /* network blip — try again next tick */ }
       }, POLL_MS);
     }
+
+    // Infinite scroll — observe a sentinel element at the bottom of the feed.
+    // When it enters the viewport, load the next page of agents.
+    const feedObserver = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.isIntersecting && !state.loading && !state.allLoaded) {
+          fetchFeedPage();
+        }
+      }
+    }, { rootMargin: '400px' });
+
+    // Re-observe sentinel after each page load via MutationObserver
+    const feedMutation = new MutationObserver(() => {
+      const sentinel = feedEl.querySelector('.feed-sentinel');
+      if (sentinel) {
+        feedObserver.disconnect();
+        feedObserver.observe(sentinel);
+      }
+    });
+    feedMutation.observe(feedEl, { childList: true, subtree: false });
 
     loadHeadline();
     loadFeed();

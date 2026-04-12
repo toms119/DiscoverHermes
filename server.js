@@ -1182,8 +1182,9 @@ app.get('/api/submissions', (req, res) => {
   }
 
   const limit = Math.min(Math.max(Number(req.query.limit) || 200, 1), 200);
-  const sql = `SELECT * FROM submissions WHERE ${where.join(' AND ')} ORDER BY ${order} LIMIT ?`;
-  const rows = db.prepare(sql).all(...params, limit);
+  const offset = Math.max(Number(req.query.offset) || 0, 0);
+  const sql = `SELECT * FROM submissions WHERE ${where.join(' AND ')} ORDER BY ${order} LIMIT ? OFFSET ?`;
+  const rows = db.prepare(sql).all(...params, limit, offset);
   res.json(rows.map(hydrate));
 });
 

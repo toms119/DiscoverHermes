@@ -713,6 +713,10 @@ a { color: inherit; text-decoration: none; }
   text-align: center;
   grid-column: 1 / -1;
 }
+.feed-sentinel {
+  grid-column: 1 / -1;
+  height: 1px;
+}
 /* Better empty state */
 .empty-icon { font-size: 40px; color: var(--accent); margin-bottom: 12px; }
 .empty p    { margin: 0 0 16px; font-size: 15px; }
