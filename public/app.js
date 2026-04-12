@@ -22,6 +22,13 @@
     })[c]);
   }
 
+  function fmtDate(d) {
+    if (!d) return '';
+    const dt = new Date(d);
+    if (isNaN(dt)) return d;
+    return dt.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+  }
+
   function fmtNumber(n) {
     if (n == null || Number.isNaN(Number(n))) return '—';
     n = Number(n);
@@ -1319,7 +1326,7 @@
               ${creatorLink}
               ${websiteLink}
             </div>` : ''}
-          <div class="author-posted muted">Posted ${escapeHtml((item.created_at || '').split(' ')[0] || '')}</div>
+          <div class="author-posted muted">Posted ${escapeHtml(fmtDate(item.created_at) || (item.created_at || '').split(' ')[0] || '')}</div>
         </div>`;
 
       // Engagement card — like button + share button
@@ -1346,7 +1353,7 @@
             ${item.runs_completed ? `<div class="side-metric"><span class="side-metric-val">${fmtNumber(item.runs_completed)}</span><span class="side-metric-lbl">sessions run</span></div>` : ''}
             ${item.hours_used ? `<div class="side-metric"><span class="side-metric-val">${fmtNumber(item.hours_used)}</span><span class="side-metric-lbl">hours used</span></div>` : ''}
             ${item.approx_monthly_tokens ? `<div class="side-metric"><span class="side-metric-val">${fmtNumber(item.approx_monthly_tokens)}</span><span class="side-metric-lbl">tokens / mo</span></div>` : ''}
-            ${item.running_since ? `<div class="side-metric wide"><span class="side-metric-val">${escapeHtml(item.running_since)}</span><span class="side-metric-lbl">running since</span></div>` : ''}
+            ${item.running_since ? `<div class="side-metric wide"><span class="side-metric-val">${escapeHtml(fmtDate(item.running_since))}</span><span class="side-metric-lbl">running since</span></div>` : ''}
           </div>
         </div>` : '';
 
@@ -1617,10 +1624,41 @@
           ${commentsSectionHtml}
 
           ${item.ai_rationale ? (() => {
-            // Parse rationale into bullet points — GLM separates with " - "
             const raw = item.ai_rationale;
-            const parts = raw.split(/\s*-\s+/).filter(s => s.trim().length > 3);
-            const bullets = parts.map(p => `<li>${escapeHtml(p.trim())}</li>`).join('');
+            // Smart parse: split on dimension boundaries and sentence-ending periods
+            // Pattern: "Novelty 4.0 (...), Autonomy 6.0 (...)" → individual items
+            // Also split on ". " for summary items like "Working baseline +15. Core avg 6.12."
+            const lines = [];
+            // Strip leading "Phase 1: " etc.
+            let text = raw.replace(/^Phase\s*\d+:\s*/i, '');
+            // Split dimensions: "Name N.N (detail)," or "Name N.N (detail)."
+            const dimRe = /([A-Z][a-z]+)\s+(\d+(?:\.\d+)?)\s*(\([^)]*\))?[,.]?\s*/g;
+            let m, lastIdx = 0;
+            const dims = [];
+            while ((m = dimRe.exec(text)) !== null) {
+              dims.push({ name: m[1], score: m[2], detail: m[3] || '', end: dimRe.lastIndex });
+              lastIdx = dimRe.lastIndex;
+            }
+            if (dims.length >= 3) {
+              // We found structured dimensions — render them individually
+              dims.forEach(d => {
+                lines.push(`<span class="breakdown-dim">${escapeHtml(d.name)}</span> <span class="breakdown-score">${escapeHtml(d.score)}</span>${d.detail ? ` <span class="breakdown-detail">${escapeHtml(d.detail)}</span>` : ''}`);
+              });
+              // Parse the remaining summary items after dimensions
+              const remainder = text.slice(lastIdx).trim();
+              if (remainder) {
+                remainder.split(/\.\s*/).filter(s => s.trim().length > 2).forEach(s => {
+                  const t = s.trim().replace(/\.$/, '');
+                  if (t) lines.push(escapeHtml(t));
+                });
+              }
+            } else {
+              // Fallback: split on ". " or " - "
+              raw.split(/(?:\.\s+|\s+-\s+)/).filter(s => s.trim().length > 3).forEach(s => {
+                lines.push(escapeHtml(s.trim().replace(/\.$/, '')));
+              });
+            }
+            const bullets = lines.map(l => `<li>${l}</li>`).join('');
             return `
           <section class="detail-section ai-breakdown-section">
             <h2>AI Score Breakdown</h2>
@@ -1647,7 +1685,7 @@
       // running_since is reliable (agents pull earliest session date).
       // Numeric counts are self-reported — show them but label accordingly.
       const heroMetrics = [];
-      if (item.running_since) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${escapeHtml(item.running_since)}</span><span class="hero-metric-lbl">running since</span></div>`);
+      if (item.running_since) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${escapeHtml(fmtDate(item.running_since))}</span><span class="hero-metric-lbl">running since</span></div>`);
       if (item.total_interactions && heroMetrics.length < 3) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${fmtNumber(item.total_interactions)}</span><span class="hero-metric-lbl">interactions</span></div>`);
       if (item.tasks_completed && heroMetrics.length < 3) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${fmtNumber(item.tasks_completed)}</span><span class="hero-metric-lbl">tasks done</span></div>`);
       if (item.runs_completed && heroMetrics.length < 3) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${fmtNumber(item.runs_completed)}</span><span class="hero-metric-lbl">sessions run</span></div>`);
