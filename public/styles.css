@@ -638,12 +638,13 @@ a { color: inherit; text-decoration: none; }
    No flexbox on the outer card = no flex-direction confusion ever.
    ---------------------------------------------------------------- */
 .card {
-  display: block;         /* <a> is inline by default; force block */
+  display: block;
   position: relative;
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   overflow: hidden;
+  cursor: pointer;
   text-decoration: none;
   color: inherit;
   transition:

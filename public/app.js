@@ -265,7 +265,7 @@
       if (extraClass) cls.push(extraClass);
       const badge = fresh ? `<span class="new-badge">New</span>` : '';
       return `
-        <a class="${cls.join(' ')}" href="/use-cases/${item.id}" data-id="${item.id}">
+        <div class="${cls.join(' ')}" data-href="/use-cases/${item.id}" data-id="${item.id}">
           ${badge}
           ${mediaBlock(item)}
           <div class="card-body">
@@ -277,7 +277,7 @@
               ${likeBtnHtml(item)}
             </div>
           </div>
-        </a>`;
+        </div>`;
     }
 
     // Shows a dismissible pill when the feed is pre-filtered via a chip
@@ -356,6 +356,16 @@
       e.preventDefault();
       e.stopPropagation();
       toggleLike(Number(btn.dataset.id), btn);
+    });
+
+    // Card click — navigate to detail page.
+    // Cards are <div> (not <a>) to avoid invalid nested-anchor HTML which
+    // breaks DOM rendering.  We delegate clicks here instead.
+    feedEl.addEventListener('click', (e) => {
+      // Skip if the click was on an interactive child (link, button)
+      if (e.target.closest('a') || e.target.closest('button')) return;
+      const card = e.target.closest('.card[data-href]');
+      if (card) window.location.href = card.dataset.href;
     });
 
     // Sort tabs — only tabs that actually have a data-sort value.
