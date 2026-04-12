@@ -677,13 +677,22 @@ a { color: inherit; text-decoration: none; }
   transition: background 0.3s ease;
 }
 
-/* Image zone — always full-width block, always on top */
+/* Image zone — mobile-first: short banner by default, desktop widens.
+   This ensures even if media queries fail or CSS is cached, the card
+   image stays compact. Desktop overrides are below. */
 .card-media {
   display: block;
   width: 100%;
-  aspect-ratio: 16 / 9;
+  aspect-ratio: 2 / 1;
+  max-height: 160px;
   background: #0a0c11;
   overflow: hidden;
+}
+@media (min-width: 641px) {
+  .card-media {
+    aspect-ratio: 16 / 9;
+    max-height: none;
+  }
 }
 .card-media img,
 .card-media video {
@@ -888,19 +897,14 @@ a { color: inherit; text-decoration: none; }
 .like-btn.liked .heart::before { content: "♥"; }
 
 /* ----------------------------------------------------------------
-   MOBILE CARD OVERRIDES — must appear AFTER all base .card rules
-   above so the cascade works correctly. This was previously placed
-   before the base rules, causing every mobile fix to be invisible.
+   MOBILE CARD OVERRIDES — card-media is already mobile-first (2:1,
+   160px cap) in the base rule above. These handle the remaining
+   card sub-elements on narrow viewports.
    ---------------------------------------------------------------- */
 @media (max-width: 640px) {
   .card {
     max-height: 420px;
     overflow: hidden;
-  }
-  .card-media {
-    aspect-ratio: 2 / 1;
-    max-height: 160px;
-    min-height: 80px;
   }
   .card-body  { padding: 10px 12px 12px; }
   .card-title {
