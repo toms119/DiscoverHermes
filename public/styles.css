@@ -361,46 +361,72 @@ a { color: inherit; text-decoration: none; }
 /* ---- 1-2-3 step strip ---- */
 .submit-steps-strip {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   justify-content: center;
-  gap: 12px;
-  margin: 28px auto 18px;
-  max-width: 560px;
+  gap: 16px;
+  margin: 32px auto 24px;
+  max-width: 720px;
+  background: linear-gradient(135deg, rgba(124, 92, 255, 0.10), rgba(255, 138, 61, 0.06));
+  border: 1px solid rgba(124, 92, 255, 0.25);
+  border-radius: 16px;
+  padding: 24px 28px;
 }
 .submit-step {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+  flex: 1;
+  text-align: center;
 }
 .submit-step-num {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   background: var(--accent-2, #7c5cff);
   color: #fff;
   font-weight: 800;
-  font-size: 14px;
+  font-size: 20px;
   flex-shrink: 0;
+  box-shadow: 0 0 16px rgba(124, 92, 255, 0.4);
 }
 .submit-step-text {
-  font-size: 14px;
-  font-weight: 600;
+  font-size: 16px;
+  font-weight: 700;
   color: var(--text);
-  white-space: nowrap;
+  line-height: 1.3;
 }
 .submit-step-arrow {
-  color: var(--text-dim);
-  font-size: 16px;
-  opacity: 0.5;
+  display: flex;
+  align-items: center;
+  color: var(--accent-2, #7c5cff);
+  font-size: 22px;
+  opacity: 0.6;
+  padding-top: 6px;
 }
 @media (max-width: 520px) {
-  .submit-steps-strip { gap: 6px; }
-  .submit-step-text { font-size: 12px; }
-  .submit-step-num { width: 24px; height: 24px; font-size: 12px; }
-  .submit-step-arrow { font-size: 13px; }
+  .submit-steps-strip { gap: 8px; padding: 16px 14px; }
+  .submit-step-text { font-size: 13px; }
+  .submit-step-num { width: 36px; height: 36px; font-size: 16px; }
+  .submit-step-arrow { font-size: 18px; }
+}
+
+.submit-step-detail {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-dim);
+  opacity: 0.7;
+}
+.submit-steps-tagline {
+  text-align: center;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--accent-2, #7c5cff);
+  margin: -8px 0 20px !important;
+  letter-spacing: 0.02em;
 }
 
 .agent-shortcut {
