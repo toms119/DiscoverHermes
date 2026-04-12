@@ -2899,6 +2899,44 @@ pre code { background: transparent; padding: 0; }
   background: rgba(255,77,109,0.22);
 }
 
+/* ---------- feedback CTA ---------- */
+.submit-feedback-cta {
+  max-width: 620px;
+  margin: 48px auto 0;
+  padding: 28px 32px;
+  text-align: center;
+  background: linear-gradient(135deg, rgba(124, 92, 255, 0.10), rgba(255, 138, 61, 0.08));
+  border: 1px solid rgba(124, 92, 255, 0.3);
+  border-radius: 16px;
+}
+.submit-feedback-cta h3 {
+  margin: 0 0 8px;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text);
+}
+.submit-feedback-cta p {
+  margin: 0 0 18px;
+  font-size: 14px;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+.submit-feedback-btn {
+  display: inline-block;
+  padding: 12px 28px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+  background: var(--accent-2, #7c5cff);
+  border-radius: 10px;
+  text-decoration: none;
+  transition: background 0.15s, transform 0.1s;
+}
+.submit-feedback-btn:hover {
+  background: #6a4de6;
+  transform: translateY(-1px);
+}
+
 /* ---------- footer ---------- */
 .site-footer {
   max-width: var(--maxw);
