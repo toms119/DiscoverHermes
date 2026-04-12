@@ -1416,7 +1416,8 @@
           <div class="detail-media">${media}</div>
           <div class="detail-hero-head">
             ${item.category ? `<span class="chip chip-category">${escapeHtml(item.category)}</span>` : ''}
-            <h1>${escapeHtml(item.title)}${verifiedBadge(item)}</h1>
+            <h1>${escapeHtml(item.title)}</h1>
+            ${item.verified ? '<span class="verified-badge detail-verified">Verified</span>' : ''}
             <p class="detail-pitch">${escapeHtml(item.pitch || '')}</p>
             ${heroCtaHtml}
             ${heroMetricsHtml}
