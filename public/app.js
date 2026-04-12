@@ -1421,9 +1421,6 @@
       const GALLERY_MAX = 10;
       const isAuthor = !!item.is_author;
       const gallerySlotsLeft = GALLERY_MAX - rawGallery.length;
-      const imageHintHtml = allImages.length > 0 && !isAuthor
-        ? `<div class="hero-image-hint">Builders: tell your Hermes agent <em>"Add screenshots to my DiscoverHermes card"</em> to show off your build</div>`
-        : '';
       const galleryAddHtml = isAuthor && gallerySlotsLeft > 0 ? `
         <div class="hero-add-image">
           <label class="gallery-add-inline" for="gallery-upload-${item.id}">
@@ -1432,7 +1429,7 @@
             + Add image <span class="muted">(${gallerySlotsLeft} slot${gallerySlotsLeft === 1 ? '' : 's'} left)</span>
           </label>
           <div class="gallery-add-status muted"></div>
-        </div>` : imageHintHtml;
+        </div>` : '';
 
       // ---------- comments (flat, handle-required) ----------
       // Anyone can comment but a twitter_handle is required. Author of the
