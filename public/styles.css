@@ -2001,17 +2001,41 @@ a { color: inherit; text-decoration: none; }
   margin: 0;
 }
 
+/* ---------- stats section headers ---------- */
+.stats-section-header {
+  max-width: var(--maxw);
+  margin: 0 auto;
+  padding: 32px 24px 0;
+  border-top: 1px solid var(--border);
+}
+.stats-section-header:first-of-type {
+  border-top: none;
+  padding-top: 0;
+}
+.stats-section-header .section-title {
+  font-size: 20px;
+  font-weight: 800;
+  margin: 0 0 4px;
+  color: var(--text);
+}
+.stats-section-header .section-subtitle {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin: 0 0 20px;
+}
+.stats-section-header .section-subtitle a {
+  color: var(--accent);
+  text-decoration: none;
+}
+.stats-section-header .section-subtitle a:hover {
+  text-decoration: underline;
+}
+
 /* ---------- GitHub stats section ---------- */
 .github-stats-section {
   max-width: var(--maxw);
-  margin: 0 auto 32px;
-  padding: 0 24px;
-}
-.github-stats-section .section-title {
-  font-size: 18px;
-  font-weight: 800;
-  margin: 0 0 16px;
-  color: var(--text);
+  margin: 0 auto 64px;
+  padding: 0;
 }
 .github-headline {
   display: grid;
