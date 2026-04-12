@@ -1782,22 +1782,30 @@ app.patch('/api/submissions/:id/score', smallJson, (req, res) => {
   const b = req.body || {};
   const now = new Date().toISOString();
   
-  // Validate score range
+  // Allow setting pending without score (for reset)
+  const aiScorePending = b.ai_score_pending != null ? cleanBool(b.ai_score_pending) : null;
   const aiScore = b.ai_score != null ? cleanInt(b.ai_score, 100) : null;
   const aiGrade = typeof b.ai_grade === 'string' && ['S','A','B','C','D'].includes(b.ai_grade) ? b.ai_grade : null;
   const aiRationale = clean(b.ai_rationale, 500);
   const featured = cleanBool(b.featured);
   const featuredReason = clean(b.featured_reason, 200);
   
-  if (aiScore == null) {
-    return res.status(400).json({ error: 'ai_score is required (0-100)' });
+  // Must provide either ai_score or ai_score_pending
+  if (aiScore == null && aiScorePending == null) {
+    return res.status(400).json({ error: 'ai_score or ai_score_pending is required' });
   }
   
   const info = db.prepare(`
     UPDATE submissions
-    SET ai_score = ?, ai_grade = ?, ai_score_pending = 0, ai_rationale = ?, featured = ?, featured_reason = ?, last_reviewed_at = ?
+    SET ai_score = COALESCE(?, ai_score),
+        ai_grade = COALESCE(?, ai_grade),
+        ai_score_pending = COALESCE(?, ai_score_pending),
+        ai_rationale = COALESCE(?, ai_rationale),
+        featured = COALESCE(?, featured),
+        featured_reason = COALESCE(?, featured_reason),
+        last_reviewed_at = ?
     WHERE id = ?
-  `).run(aiScore, aiGrade, aiRationale, featured, featuredReason, now, id);
+  `).run(aiScore, aiGrade, aiScorePending, aiRationale, featured, featuredReason, now, id);
   if (info.changes === 0) return res.status(404).json({ error: 'not found' });
 
   const row = db.prepare('SELECT * FROM submissions WHERE id = ?').get(id);
