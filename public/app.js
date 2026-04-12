@@ -993,11 +993,33 @@
     }
 
     function render(item) {
-      const media = item.video_url
-        ? `<video src="${escapeHtml(item.video_url)}" controls playsinline></video>`
-        : item.image_url
-        ? `<img src="${escapeHtml(item.image_url)}" alt="" referrerpolicy="no-referrer" />`
-        : `<div class="placeholder-big">◆</div>`;
+      // Build hero media — carousel if multiple images, single if one
+      const rawGallery = Array.isArray(item.gallery) ? item.gallery : [];
+      const allImages = [];
+      if (item.image_url) allImages.push(item.image_url);
+      rawGallery.forEach((url) => { if (url !== item.image_url) allImages.push(url); });
+
+      let media;
+      if (item.video_url) {
+        media = `<video src="${escapeHtml(item.video_url)}" controls playsinline></video>`;
+      } else if (allImages.length > 1) {
+        const heroSlides = allImages.map((url, i) => `
+          <div class="hero-slide${i === 0 ? ' active' : ''}" data-idx="${i}">
+            <img src="${escapeHtml(url)}" alt="Image ${i + 1}" referrerpolicy="no-referrer" />
+          </div>`).join('');
+        const heroDots = `<div class="hero-dots">${allImages.map((_, i) => `<button class="hero-dot${i === 0 ? ' active' : ''}" data-idx="${i}" type="button"></button>`).join('')}</div>`;
+        media = `<div class="hero-carousel" data-count="${allImages.length}">
+          <div class="hero-carousel-track">${heroSlides}</div>
+          <button class="hero-carousel-prev" type="button" aria-label="Previous">&#8249;</button>
+          <button class="hero-carousel-next" type="button" aria-label="Next">&#8250;</button>
+          ${heroDots}
+          <span class="hero-carousel-counter">1 / ${allImages.length}</span>
+        </div>`;
+      } else if (allImages.length === 1) {
+        media = `<img src="${escapeHtml(allImages[0])}" alt="" referrerpolicy="no-referrer" />`;
+      } else {
+        media = `<div class="placeholder-big">◆</div>`;
+      }
 
       const hasTech =
         item.integrations?.length || item.tools_used?.length ||
@@ -1384,72 +1406,20 @@
       // Author can add screenshots of the dashboard / terminal / output
       // from the detail page once posted. Stored as a JSON array on the
       // submission; mutated via PATCH gallery_add / gallery_remove.
+      // Gallery section removed — all images now cycle in the hero carousel.
+      // Keep author upload button inline below the hero.
       const GALLERY_MAX = 10;
-      const rawGallery = Array.isArray(item.gallery) ? item.gallery : [];
-      // Combine hero image + gallery into one unified list for display
-      const allImages = [];
-      if (item.image_url) allImages.push(item.image_url);
-      rawGallery.forEach((url) => { if (url !== item.image_url) allImages.push(url); });
-      const galleryList = allImages;
       const isAuthor = !!item.is_author;
-      const galleryItemsHtml = galleryList.map((url, idx) => `
-        <figure class="gallery-item">
-          <img src="${escapeHtml(url)}" alt="Gallery image ${idx + 1}"
-               loading="lazy" referrerpolicy="no-referrer" />
-          ${isAuthor ? `
-          <button class="gallery-remove" type="button"
-                  data-gallery-url="${escapeHtml(url)}"
-                  title="Remove from gallery">×</button>` : ''}
-        </figure>`).join('');
       const gallerySlotsLeft = GALLERY_MAX - rawGallery.length;
-      const galleryAddSlotHtml = isAuthor && gallerySlotsLeft > 0 ? `
-        <label class="gallery-add" for="gallery-upload-${item.id}">
-          <input type="file" id="gallery-upload-${item.id}" class="gallery-upload"
-                 accept="image/png,image/jpeg,image/webp,image/gif" hidden />
-          <div class="gallery-add-inner">
-            <span class="gallery-add-icon">+</span>
-            <span class="gallery-add-label">
-              Add image<br>
-              <span class="muted">${gallerySlotsLeft} slot${gallerySlotsLeft === 1 ? '' : 's'} left</span>
-            </span>
-          </div>
+      const galleryAddHtml = isAuthor && gallerySlotsLeft > 0 ? `
+        <div class="hero-add-image">
+          <label class="gallery-add-inline" for="gallery-upload-${item.id}">
+            <input type="file" id="gallery-upload-${item.id}" class="gallery-upload"
+                   accept="image/png,image/jpeg,image/webp,image/gif" hidden />
+            + Add image <span class="muted">(${gallerySlotsLeft} slot${gallerySlotsLeft === 1 ? '' : 's'} left)</span>
+          </label>
           <div class="gallery-add-status muted"></div>
-        </label>` : '';
-      const hasGallerySection = allImages.length > 0 || isAuthor;
-      const carouselSlides = galleryList.map((url, i) => `
-        <div class="carousel-slide${i === 0 ? ' active' : ''}" data-idx="${i}">
-          <img src="${escapeHtml(url)}" alt="Gallery image ${i + 1}" referrerpolicy="no-referrer" />
-          ${isAuthor ? `<button class="gallery-remove carousel-remove" type="button" data-gallery-url="${escapeHtml(url)}" title="Remove image">×</button>` : ''}
-        </div>`).join('');
-      const carouselDots = galleryList.length > 1
-        ? `<div class="carousel-dots">${galleryList.map((_, i) => `<button class="carousel-dot${i === 0 ? ' active' : ''}" data-idx="${i}" type="button"></button>`).join('')}</div>`
-        : '';
-      // Single image: show a simple image instead of the full carousel to
-      // avoid the black-flash from an empty carousel track.
-      const singleImageHtml = galleryList.length === 1
-        ? `<div class="gallery-single">
-             <img src="${escapeHtml(galleryList[0])}" alt="Gallery image" referrerpolicy="no-referrer" />
-             ${isAuthor ? `<button class="gallery-remove" type="button" data-gallery-url="${escapeHtml(galleryList[0])}" title="Remove image">×</button>` : ''}
-           </div>`
-        : '';
-      const gallerySectionHtml = hasGallerySection ? `
-        <section class="detail-section gallery-section">
-          <h2>Gallery${allImages.length ? ` <span class="tab-badge">${allImages.length} photo${allImages.length === 1 ? '' : 's'}</span>` : ''}</h2>
-          ${allImages.length === 0 && isAuthor
-            ? `<p class="muted gallery-empty">Show off what you built — upload screenshots of the dashboard, terminal output, Telegram chat, whatever is most visual. Up to ${GALLERY_MAX} images.</p>`
-            : (isAuthor && gallerySlotsLeft > 0 ? `<p class="muted gallery-hint">You can add up to ${gallerySlotsLeft} more image${gallerySlotsLeft === 1 ? '' : 's'}</p>` : '')}
-          ${galleryList.length === 1 ? singleImageHtml : ''}
-          ${galleryList.length > 1 ? `
-          <div class="gallery-carousel">
-            <div class="carousel-track">
-              ${carouselSlides}
-            </div>
-            <button class="carousel-prev" type="button" aria-label="Previous">&#8249;</button>
-            <button class="carousel-next" type="button" aria-label="Next">&#8250;</button>
-            ${carouselDots}
-          </div>` : ''}
-          ${galleryAddSlotHtml ? `<div class="gallery-add-wrap">${galleryAddSlotHtml}</div>` : ''}
-        </section>` : '';
+        </div>` : '';
 
       // ---------- comments (flat, handle-required) ----------
       // Anyone can comment but a twitter_handle is required. Author of the
@@ -1630,6 +1600,7 @@
 
         <div class="detail-hero">
           <div class="detail-media">${media}</div>
+          ${galleryAddHtml}
           <div class="detail-hero-head">
             ${item.category ? `<span class="chip chip-category">${escapeHtml(item.category)}</span>` : ''}
             <h1>${escapeHtml(item.title)}</h1>
@@ -1641,8 +1612,6 @@
         </div>
 
         ${scoreCardsHtml}
-
-        ${gallerySectionHtml}
 
         <div class="detail-layout">
           <aside class="detail-side detail-side-left">
@@ -1789,11 +1758,12 @@
         });
       }
 
-      // ---------- gallery carousel ----------
-      const carousel = root.querySelector('.gallery-carousel');
-      if (carousel) {
-        const slides = Array.from(carousel.querySelectorAll('.carousel-slide'));
-        const dots = Array.from(carousel.querySelectorAll('.carousel-dot'));
+      // ---------- hero carousel (prev/next/dots + lightbox) ----------
+      const heroCarousel = root.querySelector('.hero-carousel');
+      if (heroCarousel) {
+        const slides = Array.from(heroCarousel.querySelectorAll('.hero-slide'));
+        const dots = Array.from(heroCarousel.querySelectorAll('.hero-dot'));
+        const counter = heroCarousel.querySelector('.hero-carousel-counter');
         let current = 0;
 
         function goTo(idx) {
@@ -1802,103 +1772,92 @@
           current = ((idx % slides.length) + slides.length) % slides.length;
           slides[current]?.classList.add('active');
           dots[current]?.classList.add('active');
+          if (counter) counter.textContent = `${current + 1} / ${slides.length}`;
         }
 
-        carousel.querySelector('.carousel-prev')?.addEventListener('click', () => goTo(current - 1));
-        carousel.querySelector('.carousel-next')?.addEventListener('click', () => goTo(current + 1));
+        heroCarousel.querySelector('.hero-carousel-prev')?.addEventListener('click', () => goTo(current - 1));
+        heroCarousel.querySelector('.hero-carousel-next')?.addEventListener('click', () => goTo(current + 1));
         dots.forEach((dot) => dot.addEventListener('click', () => goTo(Number(dot.dataset.idx))));
 
         // Touch/swipe support
         let touchX = null;
-        carousel.addEventListener('touchstart', (e) => { touchX = e.touches[0].clientX; }, { passive: true });
-        carousel.addEventListener('touchend', (e) => {
+        heroCarousel.addEventListener('touchstart', (e) => { touchX = e.touches[0].clientX; }, { passive: true });
+        heroCarousel.addEventListener('touchend', (e) => {
           if (touchX == null) return;
           const dx = e.changedTouches[0].clientX - touchX;
           if (Math.abs(dx) > 40) goTo(dx < 0 ? current + 1 : current - 1);
           touchX = null;
         }, { passive: true });
-      }
 
-      // Lightbox — click a gallery image to see it full-size
-      if (carousel) {
-        carousel.addEventListener('click', (e) => {
-          const img = e.target.closest('.carousel-slide img');
+        // Lightbox — click any hero slide image to view full-size
+        heroCarousel.addEventListener('click', (e) => {
+          const img = e.target.closest('.hero-slide img');
           if (!img) return;
-          const allUrls = Array.from(carousel.querySelectorAll('.carousel-slide img')).map(i => i.src);
+          const allUrls = Array.from(heroCarousel.querySelectorAll('.hero-slide img')).map(i => i.src);
           let lbIdx = allUrls.indexOf(img.src);
           if (lbIdx === -1) lbIdx = 0;
-
-          const overlay = document.createElement('div');
-          overlay.className = 'lightbox-overlay';
-          const lbImg = document.createElement('img');
-          lbImg.className = 'lightbox-img';
-          lbImg.src = allUrls[lbIdx];
-          lbImg.alt = 'Full size';
-          overlay.appendChild(lbImg);
-
-          if (allUrls.length > 1) {
-            const prevBtn = document.createElement('button');
-            prevBtn.className = 'lightbox-prev';
-            prevBtn.innerHTML = '&#8249;';
-            prevBtn.addEventListener('click', (ev) => {
-              ev.stopPropagation();
-              lbIdx = (lbIdx - 1 + allUrls.length) % allUrls.length;
-              lbImg.src = allUrls[lbIdx];
-            });
-            const nextBtn = document.createElement('button');
-            nextBtn.className = 'lightbox-next';
-            nextBtn.innerHTML = '&#8250;';
-            nextBtn.addEventListener('click', (ev) => {
-              ev.stopPropagation();
-              lbIdx = (lbIdx + 1) % allUrls.length;
-              lbImg.src = allUrls[lbIdx];
-            });
-            overlay.appendChild(prevBtn);
-            overlay.appendChild(nextBtn);
-          }
-
-          const closeBtn = document.createElement('button');
-          closeBtn.className = 'lightbox-close';
-          closeBtn.innerHTML = '&times;';
-          closeBtn.addEventListener('click', (ev) => { ev.stopPropagation(); overlay.remove(); });
-          overlay.appendChild(closeBtn);
-
-          overlay.addEventListener('click', (ev) => {
-            if (ev.target === overlay) overlay.remove();
-          });
-
-          function onKey(ev) {
-            if (ev.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', onKey); }
-            if (ev.key === 'ArrowLeft' && allUrls.length > 1) { lbIdx = (lbIdx - 1 + allUrls.length) % allUrls.length; lbImg.src = allUrls[lbIdx]; }
-            if (ev.key === 'ArrowRight' && allUrls.length > 1) { lbIdx = (lbIdx + 1) % allUrls.length; lbImg.src = allUrls[lbIdx]; }
-          }
-          document.addEventListener('keydown', onKey);
-          document.body.appendChild(overlay);
+          openLightbox(allUrls, lbIdx);
         });
       }
 
-      // Lightbox for single-image gallery
-      const singleGallery = root.querySelector('.gallery-single img');
-      if (singleGallery) {
-        singleGallery.addEventListener('click', () => {
-          const overlay = document.createElement('div');
-          overlay.className = 'lightbox-overlay';
-          const lbImg = document.createElement('img');
-          lbImg.className = 'lightbox-img';
-          lbImg.src = singleGallery.src;
-          lbImg.alt = 'Full size';
-          overlay.appendChild(lbImg);
-          const closeBtn = document.createElement('button');
-          closeBtn.className = 'lightbox-close';
-          closeBtn.innerHTML = '&times;';
-          closeBtn.addEventListener('click', (ev) => { ev.stopPropagation(); overlay.remove(); });
-          overlay.appendChild(closeBtn);
-          overlay.addEventListener('click', (ev) => { if (ev.target === overlay) overlay.remove(); });
-          document.addEventListener('keydown', function onKey(ev) {
-            if (ev.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', onKey); }
+      // Lightbox for single hero image (non-carousel)
+      if (!heroCarousel) {
+        const singleImg = root.querySelector('.detail-media img');
+        if (singleImg) {
+          singleImg.style.cursor = 'zoom-in';
+          singleImg.addEventListener('click', () => openLightbox([singleImg.src], 0));
+        }
+      }
+
+      // Shared lightbox function
+      function openLightbox(allUrls, startIdx) {
+        let lbIdx = startIdx;
+        const overlay = document.createElement('div');
+        overlay.className = 'lightbox-overlay';
+        const lbImg = document.createElement('img');
+        lbImg.className = 'lightbox-img';
+        lbImg.src = allUrls[lbIdx];
+        lbImg.alt = 'Full size';
+        overlay.appendChild(lbImg);
+
+        if (allUrls.length > 1) {
+          const prevBtn = document.createElement('button');
+          prevBtn.className = 'lightbox-prev';
+          prevBtn.innerHTML = '&#8249;';
+          prevBtn.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            lbIdx = (lbIdx - 1 + allUrls.length) % allUrls.length;
+            lbImg.src = allUrls[lbIdx];
           });
-          document.body.appendChild(overlay);
+          const nextBtn = document.createElement('button');
+          nextBtn.className = 'lightbox-next';
+          nextBtn.innerHTML = '&#8250;';
+          nextBtn.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            lbIdx = (lbIdx + 1) % allUrls.length;
+            lbImg.src = allUrls[lbIdx];
+          });
+          overlay.appendChild(prevBtn);
+          overlay.appendChild(nextBtn);
+        }
+
+        const closeBtn = document.createElement('button');
+        closeBtn.className = 'lightbox-close';
+        closeBtn.innerHTML = '&times;';
+        closeBtn.addEventListener('click', (ev) => { ev.stopPropagation(); overlay.remove(); });
+        overlay.appendChild(closeBtn);
+
+        overlay.addEventListener('click', (ev) => {
+          if (ev.target === overlay) overlay.remove();
         });
+
+        function onKey(ev) {
+          if (ev.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', onKey); }
+          if (ev.key === 'ArrowLeft' && allUrls.length > 1) { lbIdx = (lbIdx - 1 + allUrls.length) % allUrls.length; lbImg.src = allUrls[lbIdx]; }
+          if (ev.key === 'ArrowRight' && allUrls.length > 1) { lbIdx = (lbIdx + 1) % allUrls.length; lbImg.src = allUrls[lbIdx]; }
+        }
+        document.addEventListener('keydown', onKey);
+        document.body.appendChild(overlay);
       }
 
       // Post-an-update form (author only).
