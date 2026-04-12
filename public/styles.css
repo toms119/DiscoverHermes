@@ -560,26 +560,79 @@ a { color: inherit; text-decoration: none; }
     padding: 8px 16px 48px;
   }
 }
-/* Mobile: 1 column, full-width cards with visible content */
+/* Mobile: 1 column, tall cards with connected image+text */
 @media (max-width: 640px) {
   .feed {
     grid-template-columns: 1fr;
     gap: 12px;
     padding: 8px 12px 48px;
   }
-  .card-media { aspect-ratio: 16 / 9; }
-  .card-body  { padding: 12px 12px 14px; }
-  .card-title { font-size: 15px; line-height: 1.3; margin-bottom: 6px; }
-  .card-pitch { display: block; font-size: 13px; }
-  .chip-row   { display: flex; flex-wrap: wrap; gap: 4px; }
+  /* Remove border-radius on media so it feels like one unit with card */
+  .card-media {
+    aspect-ratio: 4 / 5;
+    border-radius: 0;
+  }
+  .card-media img {
+    object-position: center top;
+  }
+  /* Card body: generous padding, connected to image */
+  .card-body {
+    position: relative;
+    padding: 14px 14px 16px;
+    gap: 6px;
+  }
+  .card-title {
+    font-size: 16px;
+    line-height: 1.3;
+    margin-bottom: 6px;
+    /* Show full title on mobile since we have room now */
+    -webkit-line-clamp: 3;
+  }
+  .card-pitch {
+    display: block;
+    font-size: 14px;
+    line-height: 1.5;
+    margin-bottom: 10px;
+    -webkit-line-clamp: 3;
+  }
+  .chip-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 2px;
+  }
   .chip {
     font-size: 10px;
-    padding: 2px 6px;
+    padding: 3px 8px;
   }
-  .card-foot  { font-size: 11px; padding-top: 8px; }
-  .card-foot .like-btn { font-size: 11px; padding: 4px 8px; }
-  .new-badge { font-size: 9px; padding: 2px 6px; }
-  .placeholder-initials { font-size: 28px; }
+  .card-foot {
+    margin-top: 8px;
+    padding-top: 8px;
+    gap: 8px;
+  }
+  .card-foot .like-btn {
+    font-size: 12px;
+    padding: 5px 10px;
+  }
+  .new-badge {
+    font-size: 10px;
+    padding: 3px 8px;
+  }
+  .placeholder-initials {
+    font-size: 36px;
+  }
+  /* Add subtle line at top of card-body to connect with image */
+  .card-body::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--border), transparent);
+    opacity: 0.5;
+    pointer-events: none;
+  }
 }
 
 .loading, .empty {
