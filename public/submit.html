@@ -264,8 +264,24 @@ point of paste-and-go is that YOU do the hard thinking, not me.
           post with one as hero, then immediately PATCH gallery_add
           with the other. Do NOT ask — just add both.
 
-  Step G: STORE TO MEMORY + final handoff (Parts 13–14).
-          After the card is live, ALWAYS ask the user:
+  Step G: ASK ABOUT SHOWCASE IMAGES — right after posting
+          Once the card is live, ALWAYS ask:
+          "Want to add images to show off your build? You can:
+           1. Send me screenshots (dashboard, terminal, output, etc.)
+              and I'll upload them to your card gallery
+           2. I can auto-generate a Ghibli-style hero image
+           3. Both — screenshot + generated image
+           Your card can hold up to 10 images that people cycle
+           through. Screenshots of your actual agent in action are
+           the best way to stand out."
+          If they send screenshots, upload via /api/uploads and
+          PATCH gallery_add for each one. If they want a generated
+          image and the card doesn't have one yet, generate and
+          PATCH image_url. If it already has a hero, PATCH
+          gallery_add instead.
+
+  Step H: STORE TO MEMORY + final handoff (Parts 13–14).
+          After images are handled (or skipped), ALWAYS ask:
           "Want me to send you a weekly update to post to your
            DiscoverHermes card? I'll check in every Sunday, draft
            an update, and wait for your OK before posting."
