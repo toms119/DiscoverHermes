@@ -570,43 +570,15 @@ a { color: inherit; text-decoration: none; }
     padding: 8px 16px 48px;
   }
 }
-/* Mobile: 1 column, compact cards — image banner strip + tight body.
-   max-height guard prevents any single card from stealing the viewport. */
+/* Mobile feed grid — card overrides are AFTER the base .card rules
+   below so they actually win the CSS cascade. See "MOBILE CARD
+   OVERRIDES" section after the card base styles. */
 @media (max-width: 640px) {
   .feed {
     grid-template-columns: 1fr;
     gap: 12px;
     padding: 8px 12px 48px;
   }
-  .card {
-    max-height: 420px;
-    overflow: hidden;
-  }
-  .card-media {
-    aspect-ratio: 2 / 1;
-    max-height: 160px;
-    width: 100%;
-    display: block;
-    min-height: 80px;
-  }
-  .card-body  { padding: 10px 12px 12px; }
-  .card-title {
-    font-size: 15px;
-    font-weight: 700;
-    line-height: 1.3;
-    margin: 0 0 4px;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-  }
-  .card-pitch { font-size: 12.5px; margin-bottom: 8px; }
-  .chip-row   { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 2px; }
-  .chip       { font-size: 10px; padding: 2px 6px; }
-  .card-foot  { font-size: 11px; padding-top: 6px; }
-  .card-foot .like-btn { font-size: 11px; padding: 4px 8px; }
-  .new-badge  { font-size: 9px; padding: 2px 6px; }
-  .placeholder-initials { font-size: 28px; }
 }
 
 .loading, .empty {
@@ -914,6 +886,36 @@ a { color: inherit; text-decoration: none; }
   top: 1px;
 }
 .like-btn.liked .heart::before { content: "♥"; }
+
+/* ----------------------------------------------------------------
+   MOBILE CARD OVERRIDES — must appear AFTER all base .card rules
+   above so the cascade works correctly. This was previously placed
+   before the base rules, causing every mobile fix to be invisible.
+   ---------------------------------------------------------------- */
+@media (max-width: 640px) {
+  .card {
+    max-height: 420px;
+    overflow: hidden;
+  }
+  .card-media {
+    aspect-ratio: 2 / 1;
+    max-height: 160px;
+    min-height: 80px;
+  }
+  .card-body  { padding: 10px 12px 12px; }
+  .card-title {
+    font-size: 15px;
+    line-height: 1.3;
+    margin-bottom: 4px;
+  }
+  .card-pitch { font-size: 12.5px; margin-bottom: 8px; }
+  .chip-row   { gap: 4px; margin-bottom: 2px; }
+  .chip       { font-size: 10px; padding: 2px 6px; }
+  .card-foot  { font-size: 11px; padding-top: 6px; }
+  .card-foot .like-btn { font-size: 11px; padding: 4px 8px; }
+  .new-badge  { font-size: 9px; padding: 2px 6px; }
+  .placeholder-initials { font-size: 28px; }
+}
 
 /* ---------- detail page ---------- */
 .detail {
