@@ -178,7 +178,7 @@ const DESIRED_COLUMNS = {
   verified_at:           'TEXT',          // timestamp of payment
   stripe_session_id:     'TEXT',          // idempotency: reject duplicate webhooks
   // AI scoring fields — populated by daily automated review
-  ai_score:              'INTEGER',       // 0-100 composite score
+  ai_score:              'REAL',          // 0-100 composite score (decimal)
   ai_grade:              'TEXT',          // S, A, B, C, D
   ai_score_pending:      'INTEGER',       // 0/1 — waiting for AI scoring
   ai_rationale:          'TEXT',          // brief scoring explanation
@@ -378,6 +378,12 @@ function cleanTags(val, maxItems) {
     if (out.length >= maxItems) break;
   }
   return out;
+}
+
+function cleanFloat(val, max) {
+  const n = Number(val);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return Math.min(Math.round(n * 10) / 10, max);  // 1 decimal place
 }
 
 function cleanInt(val, max) {
@@ -1866,7 +1872,7 @@ app.patch('/api/submissions/:id/score', smallJson, (req, res) => {
   
   // Allow setting pending without score (for reset)
   const aiScorePending = b.ai_score_pending != null ? cleanBool(b.ai_score_pending) : null;
-  const aiScore = b.ai_score != null ? cleanInt(b.ai_score, 100) : null;
+  const aiScore = b.ai_score != null ? cleanFloat(b.ai_score, 100) : null;
   const aiGrade = typeof b.ai_grade === 'string' && ['S','A','B','C','D'].includes(b.ai_grade) ? b.ai_grade : null;
   const aiRationale = clean(b.ai_rationale, 500);
   const featured = cleanBool(b.featured);

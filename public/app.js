@@ -408,8 +408,11 @@
       const galleryBadge = galleryCount > 1
         ? `<span class="gallery-badge" title="${galleryCount} images">📷 ${galleryCount}</span>` : '';
       // AI score pill — shown in footer next to likes for clean comparison
+      const scoreDisplay = item.ai_score != null 
+        ? (Number.isInteger(item.ai_score) ? item.ai_score : item.ai_score.toFixed(1))
+        : null;
       const aiScorePill = item.ai_score
-        ? `<span class="card-ai-score" title="AI Score: ${item.ai_score}/100"><span class="card-ai-num">${item.ai_score}</span> AI Score</span>`
+        ? `<span class="card-ai-score" title="AI Score: ${scoreDisplay}/100"><span class="card-ai-num">${scoreDisplay}</span> AI Score</span>`
         : (item.ai_score_pending ? `<span class="card-ai-score card-ai-pending">Pending AI Score</span>` : '');
       const achievs = achievementBadges(item);
       return `
@@ -921,7 +924,7 @@
             <span class="spotlight-name">${escapeHtml(item.title)}</span>
             ${item.category ? `<span class="spotlight-cat">${escapeHtml(item.category)}</span>` : ''}
             <div class="spotlight-meta">
-              ${item.ai_score != null ? `<span class="spotlight-ai-score">${item.ai_score}</span>` : ''}
+              ${item.ai_score != null ? `<span class="spotlight-ai-score">${Number.isInteger(item.ai_score) ? item.ai_score : item.ai_score.toFixed(1)}</span>` : ''}
               ${(item.likes - (item.dislikes || 0)) > 0 ? `<span class="spotlight-likes">♥ ${item.likes - (item.dislikes || 0)}</span>` : ''}
             </div>
           </div>
@@ -1316,15 +1319,18 @@
       const likesRankStr = item.likes_rank != null
         ? `#${item.likes_rank}${item.total_agents != null ? ` of ${item.total_agents}` : ''}`
         : null;
+      const scoreDisplay = item.ai_score != null 
+        ? (Number.isInteger(item.ai_score) ? item.ai_score : item.ai_score.toFixed(1))
+        : null;
       const scoreCardsHtml = `
         <div class="score-cards-strip">
           ${hasAiScore ? `
           <div class="score-card ai-card">
             <div class="ai-card-row">
-              <span class="rank-grade">${item.ai_score}</span>
+              <span class="rank-grade">${scoreDisplay}</span>
               <div>
                 <div class="score-card-title">AI Score</div>
-                <div class="ai-score-num">${item.ai_score}<span class="ai-score-unit"> / 100</span></div>
+                <div class="ai-score-num">${scoreDisplay}<span class="ai-score-unit"> / 100</span></div>
                 <div class="ai-score-label">${aiRankStr ? `Ranked ${aiRankStr}` : ''}</div>
               </div>
             </div>
@@ -2323,12 +2329,13 @@
       const dislikes = Number(item.dislikes) || 0;
       const netLikes = likes - dislikes;
       const score = item.ai_score || 0;
+      const scoreDisplay = Number.isInteger(score) ? score : score.toFixed(1);
 
       // Score display differs by view
       let scoreBlock;
       if (view === 'ai' && score) {
         scoreBlock = `<div class="ranking-score-block">
-          <span class="ranking-score-num">${score}</span>
+          <span class="ranking-score-num">${scoreDisplay}</span>
           <span class="ranking-score-label">AI Score</span>
         </div>`;
       } else {
