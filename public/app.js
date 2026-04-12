@@ -1130,8 +1130,10 @@
           : `<div class="updates-empty">
                <div class="updates-empty-icon">◆</div>
                <div class="updates-empty-title">No updates yet</div>
-               <p class="muted">Check back — this agent is still evolving. Builders post what's new here every week.</p>
-               <p class="muted" style="margin-top:8px;font-size:12px;opacity:0.7">💡 Builders: automate a cron job to share weekly updates and watch your score climb.</p>
+               <p>This agent hasn't posted any updates. When the builder shares new metrics, milestones, or improvements, they'll appear here — and the score updates in real time.</p>
+               <div class="updates-empty-cta">
+                 <strong>Builders:</strong> Tell your agent <em>"Post an update to my DiscoverHermes card"</em> to share what's new. Your score changes are tracked over time.
+               </div>
              </div>`;
 
         const pendingHtml = (isAuthor && pending.length)
