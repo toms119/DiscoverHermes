@@ -19,91 +19,6 @@
   <meta name="twitter:image" content="https://discoverhermes.com/og-image.svg" />
   <link rel="stylesheet" href="/styles.css" />
   <style>
-    .rankings-table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 24px;
-    }
-    .rankings-table th,
-    .rankings-table td {
-      padding: 14px 16px;
-      text-align: left;
-      border-bottom: 1px solid var(--border);
-    }
-    .rankings-table th {
-      font-size: 12px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      color: var(--text-dim);
-      font-weight: 600;
-    }
-    .rankings-table tbody tr:hover {
-      background: var(--bg-elev);
-    }
-    .rank-row {
-      font-size: 28px;
-      font-weight: 700;
-      color: var(--text-dim);
-      width: 50px;
-    }
-    .rank-top-3 .rank-row { color: var(--accent-2); }
-    .rank-title {
-      font-weight: 600;
-      color: var(--text);
-    }
-    .rank-title:hover { color: var(--accent); }
-    .rank-score {
-      font-weight: 700;
-      font-size: 20px;
-    }
-    .rank-grade {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 32px;
-      height: 32px;
-      border-radius: 8px;
-      font-weight: 700;
-      font-size: 14px;
-    }
-    .grade-S { background: linear-gradient(135deg, #ffd700, #ffaa00); color: #1a0b05; }
-    .grade-A { background: var(--accent-soft); color: var(--accent); }
-    .grade-B { background: rgba(139, 195, 74, 0.15); color: #8bc34a; }
-    .grade-C { background: rgba(255, 193, 7, 0.15); color: #ffc107; }
-    .grade-D { background: rgba(158, 158, 158, 0.15); color: #9e9e9e; }
-    .rank-meta {
-      font-size: 13px;
-      color: var(--text-dim);
-    }
-    .score-bar {
-      height: 6px;
-      background: var(--border);
-      border-radius: 3px;
-      overflow: hidden;
-      margin-top: 6px;
-      width: 80px;
-    }
-    .score-fill {
-      height: 100%;
-      background: var(--accent-2);
-      border-radius: 3px;
-    }
-    .rank-likes {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      font-weight: 700;
-      font-size: 16px;
-      color: var(--heart);
-    }
-    .rank-likes::before {
-      content: '♥';
-      font-size: 15px;
-    }
-    .rank-likes.zero {
-      color: var(--text-dim);
-      font-weight: 500;
-    }
     .rankings-tabs {
       display: flex;
       gap: 8px;
@@ -131,12 +46,165 @@
       border-color: var(--accent);
     }
     .rankings-main {
-      max-width: 960px;
+      max-width: 1100px;
       margin: 0 auto;
       padding: 0 24px 64px;
     }
+
+    /* Rankings card grid */
+    .rankings-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 16px;
+      margin-top: 20px;
+    }
+    .ranking-card {
+      position: relative;
+      display: flex;
+      gap: 14px;
+      background: var(--card-bg, var(--bg-elev));
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 16px;
+      cursor: pointer;
+      transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+    }
+    .ranking-card:hover {
+      border-color: var(--border-strong);
+      box-shadow: 0 8px 24px -8px rgba(0,0,0,0.3);
+      transform: translateY(-2px);
+    }
+    .ranking-card.ranking-top {
+      border-color: rgba(124, 92, 255, 0.35);
+      box-shadow: 0 0 0 1px rgba(124, 92, 255, 0.15);
+    }
+    .ranking-medal {
+      position: absolute;
+      top: -8px;
+      left: -4px;
+      font-size: 24px;
+      filter: drop-shadow(0 2px 4px rgba(0,0,0,0.4));
+      z-index: 1;
+    }
+    .ranking-num {
+      position: absolute;
+      top: 8px;
+      left: 10px;
+      font-size: 12px;
+      font-weight: 800;
+      color: var(--text-dim);
+      opacity: 0.5;
+    }
+    .ranking-card-img {
+      flex-shrink: 0;
+      width: 80px;
+      height: 80px;
+      border-radius: 10px;
+      overflow: hidden;
+      background: var(--bg-elev);
+    }
+    .ranking-card-img img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .ranking-card-placeholder {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, rgba(124,92,255,0.1), rgba(66,214,164,0.1));
+    }
+    .ranking-card-placeholder .brand-mark {
+      font-size: 28px;
+      color: var(--accent);
+      opacity: 0.4;
+    }
+    .ranking-card-body {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .ranking-card-title {
+      font-weight: 700;
+      font-size: 15px;
+      color: var(--text);
+      text-decoration: none;
+      line-height: 1.3;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .ranking-card-title:hover { color: var(--accent); }
+    .ranking-card-pitch {
+      font-size: 12px;
+      color: var(--text-dim);
+      line-height: 1.4;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      margin: 0;
+    }
+    .ranking-score-block {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 2px;
+    }
+    .ranking-score-num {
+      font-size: 20px;
+      font-weight: 800;
+      color: var(--text);
+      letter-spacing: -0.02em;
+      line-height: 1;
+    }
+    .ranking-score-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .ranking-likes-num {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--heart, #ff4060);
+    }
+    .ranking-card-foot {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: auto;
+      padding-top: 4px;
+    }
+    .ranking-author {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--accent);
+      text-decoration: none;
+    }
+    .ranking-author:hover { text-decoration: underline; }
+    .ranking-card .chip-row { margin-top: 2px; }
+    .ranking-card .chip {
+      font-size: 10px;
+      padding: 2px 7px;
+    }
+    .ranking-card .like-btn {
+      padding: 4px 10px;
+      font-size: 12px;
+    }
+
     @media (max-width: 640px) {
-      .col-hide-mobile { display: none; }
+      .rankings-grid {
+        grid-template-columns: 1fr;
+      }
+      .ranking-card-img {
+        width: 60px;
+        height: 60px;
+      }
     }
   </style>
 </head>
@@ -164,20 +232,9 @@
       <button class="tab active" data-view="ai">AI Rankings</button>
       <button class="tab" data-view="liked">Human Rankings</button>
     </div>
-    <table class="rankings-table" id="rankings-table">
-      <thead>
-        <tr>
-          <th>Rank</th>
-          <th>Agent</th>
-          <th>Score</th>
-          <th class="col-hide-mobile">Likes</th>
-          <th class="col-hide-mobile">Meta</th>
-        </tr>
-      </thead>
-      <tbody id="rankings-body">
-        <tr><td colspan="5" class="loading">Loading rankings…</td></tr>
-      </tbody>
-    </table>
+    <div class="rankings-grid" id="rankings-grid">
+      <div class="loading">Loading rankings…</div>
+    </div>
   </main>
 
   <footer class="site-footer">

@@ -1045,19 +1045,29 @@ a { color: inherit; text-decoration: none; }
 .card-grade-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   margin-bottom: 6px;
+}
+.card-grade-num {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--text);
+  letter-spacing: -0.02em;
+  line-height: 1;
 }
 .card-grade-label {
   font-size: 12px;
   font-weight: 600;
   color: var(--text-dim);
 }
-.card-grade-score {
-  font-size: 11px;
+.card-grade-tag {
+  font-size: 10px;
+  font-weight: 700;
   color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
   margin-left: auto;
-  opacity: 0.7;
+  opacity: 0.6;
 }
 
 /* ---------- achievement badges (feed cards) ---------- */
@@ -1190,7 +1200,7 @@ a { color: inherit; text-decoration: none; }
   color: var(--text-dim);
 }
 
-/* ---------- detail: XP bar (AI score) ---------- */
+/* ---------- detail: AI score ---------- */
 .ai-score-label {
   font-size: 12px;
   font-weight: 700;
@@ -1199,18 +1209,13 @@ a { color: inherit; text-decoration: none; }
   letter-spacing: 0.06em;
   margin-bottom: 2px;
 }
-.xp-bar {
-  height: 8px;
-  background: var(--bg-elev);
-  border-radius: 999px;
-  overflow: hidden;
-  margin-top: 6px;
-}
-.xp-fill {
-  height: 100%;
-  border-radius: 999px;
-  background: linear-gradient(90deg, #7c5cff, #42d6a4);
-  transition: width 0.8s ease;
+
+/* ---------- detail: Human score card ---------- */
+.human-card { }
+.human-grade {
+  background: rgba(255, 64, 96, 0.15);
+  color: var(--heart, #ff4060);
+  font-size: 18px;
 }
 
 /* ---------- staggered card entrance ---------- */
@@ -1756,6 +1761,22 @@ a { color: inherit; text-decoration: none; }
 }
 
 /* ---------- detail: AI score card ---------- */
+.rank-grade {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  font-weight: 800;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+.rank-grade.grade-S, .rank-grade.grade-s { background: linear-gradient(135deg, #ffd700, #ffaa00); color: #1a0b05; }
+.rank-grade.grade-A, .rank-grade.grade-a { background: var(--accent-soft); color: var(--accent); }
+.rank-grade.grade-B, .rank-grade.grade-b { background: rgba(139, 195, 74, 0.15); color: #8bc34a; }
+.rank-grade.grade-C, .rank-grade.grade-c { background: rgba(255, 193, 7, 0.15); color: #ffc107; }
+.rank-grade.grade-D, .rank-grade.grade-d { background: rgba(158, 158, 158, 0.15); color: #9e9e9e; }
 .ai-card-row {
   display: flex;
   align-items: center;
@@ -1773,19 +1794,6 @@ a { color: inherit; text-decoration: none; }
   color: var(--text-dim);
   font-weight: 600;
   margin-left: 2px;
-}
-.ai-card .score-bar {
-  height: 6px;
-  background: var(--border);
-  border-radius: 3px;
-  overflow: hidden;
-  margin-top: 6px;
-  width: 120px;
-}
-.ai-card .score-fill {
-  height: 100%;
-  background: linear-gradient(90deg, var(--accent), var(--accent-2));
-  border-radius: 3px;
 }
 .ai-featured {
   margin: 12px 0 0;
