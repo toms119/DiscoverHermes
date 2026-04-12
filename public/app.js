@@ -1383,7 +1383,12 @@
       // from the detail page once posted. Stored as a JSON array on the
       // submission; mutated via PATCH gallery_add / gallery_remove.
       const GALLERY_MAX = 10;
-      const galleryList = Array.isArray(item.gallery) ? item.gallery : [];
+      const rawGallery = Array.isArray(item.gallery) ? item.gallery : [];
+      // Combine hero image + gallery into one unified list for display
+      const allImages = [];
+      if (item.image_url) allImages.push(item.image_url);
+      rawGallery.forEach((url) => { if (url !== item.image_url) allImages.push(url); });
+      const galleryList = allImages;
       const isAuthor = !!item.is_author;
       const galleryItemsHtml = galleryList.map((url, idx) => `
         <figure class="gallery-item">
@@ -1394,7 +1399,8 @@
                   data-gallery-url="${escapeHtml(url)}"
                   title="Remove from gallery">×</button>` : ''}
         </figure>`).join('');
-      const galleryAddSlotHtml = isAuthor && galleryList.length < GALLERY_MAX ? `
+      const gallerySlotsLeft = GALLERY_MAX - rawGallery.length;
+      const galleryAddSlotHtml = isAuthor && gallerySlotsLeft > 0 ? `
         <label class="gallery-add" for="gallery-upload-${item.id}">
           <input type="file" id="gallery-upload-${item.id}" class="gallery-upload"
                  accept="image/png,image/jpeg,image/webp,image/gif" hidden />
@@ -1402,12 +1408,12 @@
             <span class="gallery-add-icon">+</span>
             <span class="gallery-add-label">
               Add image<br>
-              <span class="muted">${GALLERY_MAX - galleryList.length} slot${GALLERY_MAX - galleryList.length === 1 ? '' : 's'} left</span>
+              <span class="muted">${gallerySlotsLeft} slot${gallerySlotsLeft === 1 ? '' : 's'} left</span>
             </span>
           </div>
           <div class="gallery-add-status muted"></div>
         </label>` : '';
-      const hasGallerySection = galleryList.length > 0 || isAuthor;
+      const hasGallerySection = allImages.length > 0 || isAuthor;
       const carouselSlides = galleryList.map((url, i) => `
         <div class="carousel-slide${i === 0 ? ' active' : ''}" data-idx="${i}">
           <img src="${escapeHtml(url)}" alt="Gallery image ${i + 1}" referrerpolicy="no-referrer" />
@@ -1426,10 +1432,10 @@
         : '';
       const gallerySectionHtml = hasGallerySection ? `
         <section class="detail-section gallery-section">
-          <h2>Gallery${galleryList.length ? ` <span class="tab-badge">${galleryList.length} photo${galleryList.length === 1 ? '' : 's'}</span>` : ''}</h2>
-          ${galleryList.length === 0 && isAuthor
+          <h2>Gallery${allImages.length ? ` <span class="tab-badge">${allImages.length} photo${allImages.length === 1 ? '' : 's'}</span>` : ''}</h2>
+          ${allImages.length === 0 && isAuthor
             ? `<p class="muted gallery-empty">Show off what you built — upload screenshots of the dashboard, terminal output, Telegram chat, whatever is most visual. Up to ${GALLERY_MAX} images.</p>`
-            : (isAuthor && galleryList.length < GALLERY_MAX ? `<p class="muted gallery-hint">You can add up to ${GALLERY_MAX - galleryList.length} more image${GALLERY_MAX - galleryList.length === 1 ? '' : 's'}</p>` : '')}
+            : (isAuthor && gallerySlotsLeft > 0 ? `<p class="muted gallery-hint">You can add up to ${gallerySlotsLeft} more image${gallerySlotsLeft === 1 ? '' : 's'}</p>` : '')}
           ${galleryList.length === 1 ? singleImageHtml : ''}
           ${galleryList.length > 1 ? `
           <div class="gallery-carousel">
