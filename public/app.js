@@ -1065,7 +1065,9 @@
       // clear lede without asking agents to mark it up themselves.
       function formatStory(raw) {
         if (!raw) return '';
-        const trimmed = raw.trim();
+        // Strip markdown bold/italic markers — agents sometimes use **bold**
+        // or *italic* but we render stories as styled prose, not markdown.
+        const trimmed = raw.trim().replace(/\*{1,2}([^*]+)\*{1,2}/g, '$1');
 
         // Split into paragraphs first (double newline), then tokenize sentences.
         const rawParas = trimmed.split(/\n\n+/).filter(Boolean);
@@ -1303,9 +1305,9 @@
           <div class="side-metrics">
             ${item.total_interactions ? `<div class="side-metric"><span class="side-metric-val">${fmtNumber(item.total_interactions)}</span><span class="side-metric-lbl">interactions</span></div>` : ''}
             ${item.tasks_completed ? `<div class="side-metric"><span class="side-metric-val">${fmtNumber(item.tasks_completed)}</span><span class="side-metric-lbl">tasks done</span></div>` : ''}
-            ${item.active_users ? `<div class="side-metric"><span class="side-metric-val">${fmtNumber(item.active_users)}</span><span class="side-metric-lbl">active users</span></div>` : ''}
+            ${item.active_users && item.active_users > 1 ? `<div class="side-metric"><span class="side-metric-val">${fmtNumber(item.active_users)}</span><span class="side-metric-lbl">active users</span></div>` : ''}
             ${item.time_saved_per_week ? `<div class="side-metric"><span class="side-metric-val">${item.time_saved_per_week}h</span><span class="side-metric-lbl">saved / week</span></div>` : ''}
-            ${item.runs_completed ? `<div class="side-metric"><span class="side-metric-val">${fmtNumber(item.runs_completed)}</span><span class="side-metric-lbl">runs</span></div>` : ''}
+            ${item.runs_completed ? `<div class="side-metric"><span class="side-metric-val">${fmtNumber(item.runs_completed)}</span><span class="side-metric-lbl">sessions run</span></div>` : ''}
             ${item.hours_used ? `<div class="side-metric"><span class="side-metric-val">${fmtNumber(item.hours_used)}</span><span class="side-metric-lbl">hours used</span></div>` : ''}
             ${item.approx_monthly_tokens ? `<div class="side-metric"><span class="side-metric-val">${fmtNumber(item.approx_monthly_tokens)}</span><span class="side-metric-lbl">tokens / mo</span></div>` : ''}
             ${item.running_since ? `<div class="side-metric wide"><span class="side-metric-val">${escapeHtml(item.running_since)}</span><span class="side-metric-lbl">running since</span></div>` : ''}
@@ -1604,8 +1606,8 @@
       if (item.running_since) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${escapeHtml(item.running_since)}</span><span class="hero-metric-lbl">running since</span></div>`);
       if (item.total_interactions && heroMetrics.length < 3) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${fmtNumber(item.total_interactions)}</span><span class="hero-metric-lbl">interactions</span></div>`);
       if (item.tasks_completed && heroMetrics.length < 3) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${fmtNumber(item.tasks_completed)}</span><span class="hero-metric-lbl">tasks done</span></div>`);
-      if (item.runs_completed && heroMetrics.length < 3) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${fmtNumber(item.runs_completed)}</span><span class="hero-metric-lbl">runs</span></div>`);
-      if (item.active_users && heroMetrics.length < 3) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${fmtNumber(item.active_users)}</span><span class="hero-metric-lbl">active users</span></div>`);
+      if (item.runs_completed && heroMetrics.length < 3) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${fmtNumber(item.runs_completed)}</span><span class="hero-metric-lbl">sessions run</span></div>`);
+      if (item.active_users && item.active_users > 1 && heroMetrics.length < 3) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${fmtNumber(item.active_users)}</span><span class="hero-metric-lbl">active users</span></div>`);
       if (item.time_saved_per_week && heroMetrics.length < 3) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${item.time_saved_per_week}h</span><span class="hero-metric-lbl">saved / week</span></div>`);
       if (item.approx_monthly_tokens && heroMetrics.length < 3) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${fmtNumber(item.approx_monthly_tokens)}</span><span class="hero-metric-lbl">tokens / mo</span></div>`);
       if (item.hours_used && heroMetrics.length < 3) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${fmtNumber(item.hours_used)}</span><span class="hero-metric-lbl">hours used</span></div>`);
