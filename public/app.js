@@ -210,7 +210,17 @@
     const feedEl = document.getElementById('feed');
     if (!feedEl) return;
 
-    const state = { sort: 'trending', category: '', q: '', verified: false };
+    // Read any deep-link filters from the URL on first load, e.g. a visitor
+    // clicked a "Pinecone" chip on a detail page and landed on /?integration=Pinecone.
+    const initialParams = new URLSearchParams(location.search);
+    const state = {
+      sort:        'trending',
+      category:    '',
+      q:           '',
+      verified:    false,
+      integration: initialParams.get('integration') || '',
+      tool:        initialParams.get('tool') || '',
+    };
     let debounceTimer = null;
 
     // A submission is "new" if it was approved in the last 48 hours.
@@ -244,13 +254,39 @@
         </a>`;
     }
 
+    // Shows a dismissible pill when the feed is pre-filtered via a chip
+    // deep-link (e.g. ?integration=Pinecone), so the visitor can tell why
+    // they're only seeing a subset and can clear it with one click.
+    function renderFilterBanner() {
+      const banner = document.getElementById('active-filter-banner');
+      if (!banner) return;
+      const activeKey = state.integration ? 'integration' : (state.tool ? 'tool' : null);
+      const activeVal = state.integration || state.tool;
+      if (!activeKey) {
+        banner.innerHTML = '';
+        banner.hidden = true;
+        return;
+      }
+      const label = activeKey === 'integration' ? 'integration' : 'tool';
+      banner.hidden = false;
+      banner.innerHTML = `
+        <span class="active-filter-text">Showing agents that use
+          <strong>${escapeHtml(activeVal)}</strong>
+          <span class="active-filter-kind">(${label})</span>
+        </span>
+        <button class="active-filter-clear" type="button" aria-label="Clear filter">✕ Clear</button>`;
+    }
+
     async function loadFeed() {
       feedEl.innerHTML = '<div class="loading">Loading the feed…</div>';
+      renderFilterBanner();
       const params = new URLSearchParams();
       params.set('sort', state.sort);
       if (state.category) params.set('category', state.category);
       if (state.q) params.set('q', state.q);
       if (state.verified) params.set('verified', '1');
+      if (state.integration) params.set('integration', state.integration);
+      if (state.tool) params.set('tool', state.tool);
       try {
         const res = await fetch('/api/submissions?' + params.toString());
         const items = await res.json();
@@ -297,6 +333,23 @@
         state.verified = !state.verified;
         verifiedBtn.classList.toggle('active', state.verified);
         verifiedBtn.setAttribute('aria-pressed', String(state.verified));
+        loadFeed();
+      });
+    }
+
+    // "Clear filter" button in the active-filter banner — clears any
+    // integration/tool deep-link filter and also strips the param from
+    // the URL so a refresh doesn't re-apply it.
+    const filterBanner = document.getElementById('active-filter-banner');
+    if (filterBanner) {
+      filterBanner.addEventListener('click', (e) => {
+        if (!e.target.closest('.active-filter-clear')) return;
+        state.integration = '';
+        state.tool = '';
+        const url = new URL(location.href);
+        url.searchParams.delete('integration');
+        url.searchParams.delete('tool');
+        history.replaceState(null, '', url.pathname + (url.search || '') + url.hash);
         loadFeed();
       });
     }
@@ -676,9 +729,19 @@
         if (value == null || value === '') return '';
         return `<div class="side-kv"><span class="side-kv-label">${escapeHtml(label)}</span><span class="side-kv-value">${escapeHtml(value)}</span></div>`;
       }
-      function sideChipList(arr) {
+      function sideChipList(arr, filterKey) {
         if (!Array.isArray(arr) || arr.length === 0) return '';
-        return `<div class="side-chips">${arr.map((v) => `<span class="chip">${escapeHtml(v)}</span>`).join('')}</div>`;
+        // If a filterKey is passed, render each chip as a link to the feed
+        // pre-filtered by that value. The home feed reads ?integration=X /
+        // ?tool=X from the URL and forwards it to /api/submissions.
+        return `<div class="side-chips">${arr
+          .map((v) => {
+            const label = escapeHtml(v);
+            if (!filterKey) return `<span class="chip">${label}</span>`;
+            const href = `/?${filterKey}=${encodeURIComponent(v)}`;
+            return `<a class="chip chip-link" href="${href}" title="Find agents that use ${label}">${label}</a>`;
+          })
+          .join('')}</div>`;
       }
 
       // Author banner: shown only when ?delete=<token> is in the URL (the
@@ -728,7 +791,6 @@
             <div class="author-avatar">${escapeHtml(creatorInitials || '?')}</div>
             <div class="author-meta">
               <div class="author-name">${escapeHtml(creatorName)}</div>
-              ${item.verified ? `<span class="verified-badge">Verified</span>` : ''}
             </div>
           </div>
           ${creatorLink || websiteLink ? `
@@ -805,8 +867,8 @@
         ${sideKv('Platform', item.platform)}
         ${sideKv('Trigger', item.trigger_type)}
         ${sideKv('Schedule', item.trigger_detail)}
-        ${item.integrations?.length ? `<div class="side-subsection"><div class="side-sub-label">Integrations</div>${sideChipList(item.integrations)}</div>` : ''}
-        ${item.tools_used?.length ? `<div class="side-subsection"><div class="side-sub-label">Tools used</div>${sideChipList(item.tools_used)}</div>` : ''}
+        ${item.integrations?.length ? `<div class="side-subsection"><div class="side-sub-label">Integrations</div>${sideChipList(item.integrations, 'integration')}</div>` : ''}
+        ${item.tools_used?.length ? `<div class="side-subsection"><div class="side-sub-label">Tools used</div>${sideChipList(item.tools_used, 'tool')}</div>` : ''}
         ${item.data_sources?.length ? `<div class="side-subsection"><div class="side-sub-label">Data sources</div>${sideChipList(item.data_sources)}</div>` : ''}
         ${item.output_channels?.length ? `<div class="side-subsection"><div class="side-sub-label">Outputs</div>${sideChipList(item.output_channels)}</div>` : ''}
       ` : '';
@@ -833,14 +895,22 @@
       const tagsBody = hasTags ? sideChipList(item.tags) : '';
       const tagsCard = sideCard('Tags', tagsBody);
 
-      // Rankings + community card — always show (even 0 likes is meaningful)
-      const totalAgents = null; // not available client-side; show rank position only
+      // Rankings + community card — always show (even 0 likes is meaningful).
+      // Rank is rendered as "#N of M" so visitors see the size of the pool.
+      // total_agents = all approved submissions (the Likes pool).
+      // total_scored = approved submissions with an ai_score (the AI pool).
+      const likesRankStr = item.likes_rank != null
+        ? (item.total_agents ? `#${item.likes_rank} of ${item.total_agents}` : `#${item.likes_rank}`)
+        : null;
+      const aiRankStr = item.ai_rank != null
+        ? (item.total_scored ? `#${item.ai_rank} of ${item.total_scored}` : `#${item.ai_rank}`)
+        : null;
       const rankCard = `
         <div class="side-card rank-card">
           <h3>Community</h3>
           ${sideKv('Likes', String(Number(item.likes) || 0))}
-          ${item.likes_rank != null ? sideKv('Likes rank', `#${item.likes_rank}`) : ''}
-          ${item.ai_rank != null ? sideKv('AI score rank', `#${item.ai_rank}`) : ''}
+          ${likesRankStr ? sideKv('Likes rank', likesRankStr) : ''}
+          ${aiRankStr ? sideKv('AI score rank', aiRankStr) : ''}
           <a class="ai-rankings-link" href="/rankings">View all rankings ↗</a>
         </div>`;
 

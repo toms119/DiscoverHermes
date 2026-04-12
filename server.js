@@ -1126,6 +1126,10 @@ app.get('/api/submissions', (req, res) => {
     where.push(`EXISTS (SELECT 1 FROM json_each(submissions.integrations) WHERE value = ?)`);
     params.push(String(req.query.integration));
   }
+  if (req.query.tool) {
+    where.push(`EXISTS (SELECT 1 FROM json_each(submissions.tools_used) WHERE value = ?)`);
+    params.push(String(req.query.tool));
+  }
   // Verified-only toggle on the feed. Accepts the usual truthy strings.
   if (req.query.verified === '1' || req.query.verified === 'true') {
     where.push('verified = 1');
@@ -1185,6 +1189,8 @@ app.get('/api/submissions/:id', (req, res) => {
   ).all(id);
 
   // Ranking positions (approx): count how many approved submissions beat this one.
+  // total_agents = size of the full "Likes rank" pool (all approved).
+  // total_scored = size of the "AI rank" pool (approved + has an ai_score).
   const aiRankRow = db.prepare(
     `SELECT 1 + COUNT(*) AS rank FROM submissions
      WHERE approved = 1 AND ai_score > COALESCE(?, -1)`
@@ -1193,8 +1199,16 @@ app.get('/api/submissions/:id', (req, res) => {
     `SELECT 1 + COUNT(*) AS rank FROM submissions
      WHERE approved = 1 AND likes > COALESCE(?, -1)`
   ).get(hydrated.likes ?? null);
-  hydrated.ai_rank    = aiRankRow?.rank ?? null;
-  hydrated.likes_rank = likesRankRow?.rank ?? null;
+  const totalAgentsRow = db.prepare(
+    `SELECT COUNT(*) AS n FROM submissions WHERE approved = 1`
+  ).get();
+  const totalScoredRow = db.prepare(
+    `SELECT COUNT(*) AS n FROM submissions WHERE approved = 1 AND ai_score IS NOT NULL`
+  ).get();
+  hydrated.ai_rank      = aiRankRow?.rank ?? null;
+  hydrated.likes_rank   = likesRankRow?.rank ?? null;
+  hydrated.total_agents = totalAgentsRow?.n ?? null;
+  hydrated.total_scored = totalScoredRow?.n ?? null;
 
   const token = typeof req.query.token === 'string' ? req.query.token : null;
   if (token && verifyDeleteToken(id, token)) {
