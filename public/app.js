@@ -712,6 +712,21 @@
     startLivePoll();
     loadFeatured();
     loadSpotlight();
+
+    // ---------- hero text cycling: Hermes → OpenClaw → IronClaw … ----------
+    const heroFw = document.getElementById('hero-framework');
+    if (heroFw) {
+      const names = ['Hermes', 'OpenClaw', 'IronClaw', 'AI Agents'];
+      let idx = 0;
+      setInterval(() => {
+        heroFw.style.opacity = '0';
+        setTimeout(() => {
+          idx = (idx + 1) % names.length;
+          heroFw.textContent = names[idx];
+          heroFw.style.opacity = '1';
+        }, 400);
+      }, 3000);
+    }
   }
 
   // ==========================================================

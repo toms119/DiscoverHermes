@@ -112,6 +112,11 @@ a { color: inherit; text-decoration: none; }
   }
   .site-header nav::-webkit-scrollbar { height: 3px; }
   .site-header nav::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  .nav-full { display: none; }
+}
+.nav-short { display: none; }
+@media (max-width: 900px) {
+  .nav-short { display: inline; }
 }
 
 .primary, .ghost {
@@ -322,6 +327,10 @@ a { color: inherit; text-decoration: none; }
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
+}
+.hero-cycle {
+  transition: opacity 0.4s ease;
+  display: inline-block;
 }
 .hero p {
   max-width: 720px;
@@ -2679,6 +2688,7 @@ pre code { background: transparent; padding: 0; }
   white-space: nowrap;
 }
 .donation .copy-btn {
+  position: static;
   font-size: 11px;
   padding: 4px 10px;
   border: 1px solid var(--border);
