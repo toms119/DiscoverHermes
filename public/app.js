@@ -271,14 +271,20 @@
       return Number.isFinite(ts) && Date.now() - ts < NEW_WINDOW_MS;
     }
 
-    // Achievement badges — earned based on real metrics
+    // Achievement badges — percentile-based, earned from real standing
+    // _likePct / _aiPct are set by loadFeed before rendering (0–100, lower = better)
     function achievementBadges(item) {
       const badges = [];
+      // Likes: top 1% → Legend, top 10% → Fan Favorite
+      if (item._likePct != null && item._likePct <= 1) badges.push('<span class="achiev achiev-legendary" title="Top 1% most liked">👑 Legend</span>');
+      else if (item._likePct != null && item._likePct <= 10) badges.push('<span class="achiev" title="Top 10% most liked">❤️ Fan Favorite</span>');
+      // AI score: top 1% → Apex, top 10% → Elite
+      if (item._aiPct != null && item._aiPct <= 1) badges.push('<span class="achiev achiev-legendary" title="Top 1% AI score">💎 Apex Agent</span>');
+      else if (item._aiPct != null && item._aiPct <= 10) badges.push('<span class="achiev" title="Top 10% AI score">✨ Elite</span>');
+      // Absolute metrics (still valuable signals)
       if (item.time_saved_per_week >= 10) badges.push('<span class="achiev" title="Saves 10+ hours/week">⚡ Time Saver</span>');
       if (item.runs_completed >= 500) badges.push('<span class="achiev" title="500+ runs completed">🏆 Powerhouse</span>');
-      if (item.likes >= 10) badges.push('<span class="achiev" title="10+ community likes">❤️ Fan Favorite</span>');
       if (item.approx_monthly_tokens >= 1000000) badges.push('<span class="achiev" title="1M+ tokens/month">🧠 Token Beast</span>');
-      if (item.ai_grade === 'S' || item.ai_grade === 'A') badges.push('<span class="achiev" title="Top AI score">✨ Elite</span>');
       return badges.slice(0, 2).join('');
     }
 
@@ -379,6 +385,21 @@
               <a class="empty-cta" href="/submit">Be the first to post →</a>
             </div>`;
           return;
+        }
+        // Compute percentiles for achievement badges
+        if (items.length > 1) {
+          const sortedLikes = items.map((it) => it.likes || 0).sort((a, b) => b - a);
+          const sortedAi = items.filter((it) => it.ai_score != null).map((it) => it.ai_score).sort((a, b) => b - a);
+          items.forEach((it) => {
+            // Likes percentile: what % of agents have fewer likes than this one
+            const likesAbove = sortedLikes.filter((l) => l > (it.likes || 0)).length;
+            it._likePct = (likesAbove / items.length) * 100;
+            // AI percentile
+            if (it.ai_score != null && sortedAi.length > 1) {
+              const aiAbove = sortedAi.filter((s) => s > it.ai_score).length;
+              it._aiPct = (aiAbove / sortedAi.length) * 100;
+            }
+          });
         }
         // Mark top 3 as trending when viewing the trending sort
         const trendingIds = new Set();
@@ -1135,13 +1156,22 @@
       // long scrollable column so the detail page reads like an article,
       // not a SaaS dashboard. The image_prompt section is gone entirely —
       // the prompt is stored for re-gen but not surfaced to visitors.
-      // Detail-page achievements — more verbose than card badges
+      // Detail-page achievements — percentile-based from server rankings
       const detailAchievements = [];
+      // Likes percentile (likes_rank / total_agents)
+      const likesPct = (item.likes_rank && item.total_agents > 1)
+        ? ((item.likes_rank - 1) / item.total_agents) * 100 : null;
+      if (likesPct != null && likesPct <= 1) detailAchievements.push({ icon: '👑', title: 'Legend', desc: `Top 1% most liked (#${item.likes_rank} of ${item.total_agents})`, legendary: true });
+      else if (likesPct != null && likesPct <= 10) detailAchievements.push({ icon: '❤️', title: 'Fan Favorite', desc: `Top 10% most liked (#${item.likes_rank} of ${item.total_agents})` });
+      // AI score percentile (ai_rank / total_scored)
+      const aiPct = (item.ai_rank && item.total_scored > 1)
+        ? ((item.ai_rank - 1) / item.total_scored) * 100 : null;
+      if (aiPct != null && aiPct <= 1) detailAchievements.push({ icon: '💎', title: 'Apex Agent', desc: `Top 1% AI score (#${item.ai_rank} of ${item.total_scored})`, legendary: true });
+      else if (aiPct != null && aiPct <= 10) detailAchievements.push({ icon: '✨', title: 'Elite', desc: `Top 10% AI score (#${item.ai_rank} of ${item.total_scored})` });
+      // Absolute metrics
       if (item.time_saved_per_week >= 10) detailAchievements.push({ icon: '⚡', title: 'Time Saver', desc: `Saves ${item.time_saved_per_week}h+ every week` });
       if (item.runs_completed >= 500) detailAchievements.push({ icon: '🏆', title: 'Powerhouse', desc: `${fmtNumber(item.runs_completed)} runs completed` });
-      if (item.likes >= 10) detailAchievements.push({ icon: '❤️', title: 'Fan Favorite', desc: `${item.likes} community likes` });
       if (item.approx_monthly_tokens >= 1000000) detailAchievements.push({ icon: '🧠', title: 'Token Beast', desc: `${fmtNumber(item.approx_monthly_tokens)} tokens/mo` });
-      if (item.ai_grade === 'S' || item.ai_grade === 'A') detailAchievements.push({ icon: '✨', title: 'Elite Agent', desc: `${item.ai_grade}-tier AI score` });
       if (item.verified) detailAchievements.push({ icon: '✅', title: 'Verified', desc: 'Builder-verified agent' });
       if (item.running_since) {
         const sinceDate = Date.parse(item.running_since);
@@ -1154,7 +1184,7 @@
             <h2>🏅 Achievements</h2>
             <div class="achievements-grid">
               ${detailAchievements.map((a) => `
-                <div class="achievement-card">
+                <div class="achievement-card${a.legendary ? ' achievement-legendary' : ''}">
                   <span class="achievement-icon">${a.icon}</span>
                   <div class="achievement-info">
                     <span class="achievement-title">${escapeHtml(a.title)}</span>
