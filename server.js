@@ -323,6 +323,19 @@ db.exec(`
   }
 })();
 
+// ---------- one-time data fix: Agent McClaw twitter handle ----------
+(function fixMcClawHandle() {
+  const row = db.prepare(
+    `SELECT id FROM submissions
+     WHERE title LIKE '%Agent McClaw%'
+       AND twitter_handle != 'AgentMcClaw'`
+  ).get();
+  if (row) {
+    db.prepare(`UPDATE submissions SET twitter_handle = ? WHERE id = ?`)
+      .run('AgentMcClaw', row.id);
+  }
+})();
+
 // ---------- helpers ----------
 
 function clean(str, max) {
