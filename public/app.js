@@ -304,7 +304,17 @@
     }
 
     async function loadFeed() {
-      feedEl.innerHTML = '<div class="loading">Loading the feed…</div>';
+      // Skeleton loading cards — shimmer while the API responds
+      feedEl.classList.remove('feed-loaded');
+      feedEl.innerHTML = Array.from({ length: 6 }, () => `
+        <div class="card skeleton">
+          <div class="card-media skeleton-shimmer"></div>
+          <div class="card-body">
+            <div class="skeleton-line" style="width:80%"></div>
+            <div class="skeleton-line" style="width:60%"></div>
+            <div class="skeleton-line short" style="width:40%"></div>
+          </div>
+        </div>`).join('');
       renderFilterBanner();
       const params = new URLSearchParams();
       params.set('sort', state.sort);
@@ -319,15 +329,23 @@
         if (!Array.isArray(items) || items.length === 0) {
           feedEl.innerHTML = `
             <div class="empty">
-              ${state.q || state.category
-                ? 'No matches. Try a different filter.'
-                : 'Nothing here yet. <a href="/submit" style="color:var(--accent)">Be the first to post →</a>'}
+              <div class="empty-icon">◆</div>
+              <p>${state.q || state.category
+                ? 'No matches found. Try a different filter.'
+                : 'Nothing here yet.'}</p>
+              <a class="empty-cta" href="/submit">Be the first to post →</a>
             </div>`;
           return;
         }
         feedEl.innerHTML = items.map(cardHtml).join('');
+        feedEl.classList.add('feed-loaded');
       } catch {
-        feedEl.innerHTML = `<div class="empty">Couldn't load the feed. Refresh to try again.</div>`;
+        feedEl.innerHTML = `
+          <div class="empty">
+            <div class="empty-icon">◆</div>
+            <p>Couldn't load the feed.</p>
+            <button class="empty-cta" onclick="location.reload()">Refresh →</button>
+          </div>`;
       }
     }
 
@@ -1076,6 +1094,7 @@
         </div>`;
 
       root.innerHTML = `
+        <a class="back-link" href="/">← Back to feed</a>
         ${authorBanner}
 
         <div class="detail-hero">
