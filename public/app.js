@@ -1121,8 +1121,6 @@
             </ul>
           </section>` : ''}
 
-          ${gallerySectionHtml}
-
           <section class="detail-section updates-section">
             <h2>Updates${updateCount ? ` <span class="tab-badge">${updateCount}</span>` : ''}</h2>
             ${renderUpdatesPanel(item)}
@@ -1130,6 +1128,30 @@
 
           ${commentsSectionHtml}
         </div>`;
+
+      // Hero CTA buttons — prominent links to the agent's website and/or GitHub
+      const heroCtas = [];
+      if (item.website) {
+        heroCtas.push(`<a class="hero-cta hero-cta-primary" href="${escapeHtml(item.website)}" target="_blank" rel="noopener">Visit Agent ↗</a>`);
+      }
+      if (item.github_url) {
+        heroCtas.push(`<a class="hero-cta hero-cta-github" href="${escapeHtml(item.github_url)}" target="_blank" rel="noopener">View on GitHub ↗</a>`);
+      }
+      if (item.source_url && !item.github_url) {
+        heroCtas.push(`<a class="hero-cta hero-cta-github" href="${escapeHtml(item.source_url)}" target="_blank" rel="noopener">View Source ↗</a>`);
+      }
+      const heroCtaHtml = heroCtas.length
+        ? `<div class="hero-cta-row">${heroCtas.join('')}</div>` : '';
+
+      // Hero metrics strip — pull 2-3 best impact numbers into the hero
+      const heroMetrics = [];
+      if (item.time_saved_per_week) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${item.time_saved_per_week}h</span><span class="hero-metric-lbl">saved / week</span></div>`);
+      if (item.runs_completed) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${fmtNumber(item.runs_completed)}</span><span class="hero-metric-lbl">runs</span></div>`);
+      if (item.approx_monthly_tokens) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${fmtNumber(item.approx_monthly_tokens)}</span><span class="hero-metric-lbl">tokens / mo</span></div>`);
+      if (item.hours_used && heroMetrics.length < 3) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${fmtNumber(item.hours_used)}</span><span class="hero-metric-lbl">hours used</span></div>`);
+      if (item.running_since && heroMetrics.length < 3) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${escapeHtml(item.running_since)}</span><span class="hero-metric-lbl">running since</span></div>`);
+      const heroMetricsHtml = heroMetrics.length
+        ? `<div class="hero-metrics-strip">${heroMetrics.slice(0, 3).join('')}</div>` : '';
 
       root.innerHTML = `
         <a class="back-link" href="/">← Back to feed</a>
@@ -1141,8 +1163,12 @@
             ${item.category ? `<span class="chip chip-category">${escapeHtml(item.category)}</span>` : ''}
             <h1>${escapeHtml(item.title)}${verifiedBadge(item)}</h1>
             <p class="detail-pitch">${escapeHtml(item.pitch || '')}</p>
+            ${heroCtaHtml}
+            ${heroMetricsHtml}
           </div>
         </div>
+
+        ${gallerySectionHtml}
 
         <div class="detail-layout">
           <aside class="detail-side detail-side-left">
