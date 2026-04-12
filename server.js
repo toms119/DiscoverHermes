@@ -1873,7 +1873,7 @@ app.patch('/api/submissions/:id/score', smallJson, (req, res) => {
   // Allow setting pending without score (for reset)
   const aiScorePending = b.ai_score_pending != null ? cleanBool(b.ai_score_pending) : null;
   const aiScore = b.ai_score != null ? cleanFloat(b.ai_score, 100) : null;
-  const aiGrade = typeof b.ai_grade === 'string' && ['S','A','B','C','D'].includes(b.ai_grade) ? b.ai_grade : null;
+  const aiGrade = typeof b.ai_grade === 'string' && ['S','A','B','C','D','F'].includes(b.ai_grade) ? b.ai_grade : null;
   const aiRationale = clean(b.ai_rationale, 500);
   const featured = cleanBool(b.featured);
   const featuredReason = clean(b.featured_reason, 200);
