@@ -1004,7 +1004,7 @@ app.delete('/api/submissions/:id', mutationLimiter, (req, res) => {
 // letting it mutate would defeat the one-card-per-handle rule.
 const EDITABLE_FIELDS = new Set([
   'title', 'pitch', 'story', 'image_url', 'image_prompt',
-  'display_name', 'website', 'agent_framework', 'twitter_handle',
+  'display_name', 'website', 'agent_framework',
   'total_interactions', 'active_users', 'tasks_completed',
   'runs_completed', 'hours_used', 'tokens_total', 'time_saved_per_week',
   'error_rate', 'multi_agent', 'output_format',

@@ -642,10 +642,16 @@
         }, 1200);
       });
 
-      feedEl.addEventListener('mouseleave', (e) => {
-        const media = e.target.closest('.card-media[data-gallery]');
-        if (media === hoverMedia) stopCycle();
-      }, true);
+      feedEl.addEventListener('mouseleave', () => {
+        if (hoverMedia) stopCycle();
+      });
+      feedEl.addEventListener('mouseout', (e) => {
+        if (!hoverMedia) return;
+        const related = e.relatedTarget;
+        if (related && hoverMedia.contains(related)) return;
+        if (related && related.closest && related.closest('.card-media[data-gallery]') === hoverMedia) return;
+        stopCycle();
+      });
 
       function stopCycle() {
         if (hoverTimer) clearInterval(hoverTimer);
@@ -1592,17 +1598,20 @@
         ? `<div class="hero-cta-row">${heroCtas.join('')}</div>` : '';
 
       // Hero metrics strip — pull 2-3 best impact numbers into the hero
+      // running_since is reliable (agents pull earliest session date).
+      // Numeric counts are self-reported — show them but label accordingly.
       const heroMetrics = [];
-      if (item.total_interactions) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${fmtNumber(item.total_interactions)}</span><span class="hero-metric-lbl">interactions</span></div>`);
-      if (item.tasks_completed) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${fmtNumber(item.tasks_completed)}</span><span class="hero-metric-lbl">tasks done</span></div>`);
-      if (item.time_saved_per_week) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${item.time_saved_per_week}h</span><span class="hero-metric-lbl">saved / week</span></div>`);
+      if (item.running_since) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${escapeHtml(item.running_since)}</span><span class="hero-metric-lbl">running since</span></div>`);
+      if (item.total_interactions && heroMetrics.length < 3) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${fmtNumber(item.total_interactions)}</span><span class="hero-metric-lbl">interactions</span></div>`);
+      if (item.tasks_completed && heroMetrics.length < 3) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${fmtNumber(item.tasks_completed)}</span><span class="hero-metric-lbl">tasks done</span></div>`);
       if (item.runs_completed && heroMetrics.length < 3) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${fmtNumber(item.runs_completed)}</span><span class="hero-metric-lbl">runs</span></div>`);
       if (item.active_users && heroMetrics.length < 3) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${fmtNumber(item.active_users)}</span><span class="hero-metric-lbl">active users</span></div>`);
+      if (item.time_saved_per_week && heroMetrics.length < 3) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${item.time_saved_per_week}h</span><span class="hero-metric-lbl">saved / week</span></div>`);
       if (item.approx_monthly_tokens && heroMetrics.length < 3) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${fmtNumber(item.approx_monthly_tokens)}</span><span class="hero-metric-lbl">tokens / mo</span></div>`);
       if (item.hours_used && heroMetrics.length < 3) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${fmtNumber(item.hours_used)}</span><span class="hero-metric-lbl">hours used</span></div>`);
-      if (item.running_since && heroMetrics.length < 3) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${escapeHtml(item.running_since)}</span><span class="hero-metric-lbl">running since</span></div>`);
+      const metricsNote = heroMetrics.length && !item.verified ? '<span class="hero-metrics-note">self-reported</span>' : '';
       const heroMetricsHtml = heroMetrics.length
-        ? `<div class="hero-metrics-strip">${heroMetrics.slice(0, 3).join('')}</div>` : '';
+        ? `<div class="hero-metrics-strip">${heroMetrics.slice(0, 3).join('')}${metricsNote}</div>` : '';
 
       root.innerHTML = `
         <a class="back-link" href="/">← Back to feed</a>
@@ -1854,15 +1863,19 @@
         const closeBtn = document.createElement('button');
         closeBtn.className = 'lightbox-close';
         closeBtn.innerHTML = '&times;';
-        closeBtn.addEventListener('click', (ev) => { ev.stopPropagation(); overlay.remove(); });
+        function closeLightbox() {
+          overlay.remove();
+          document.removeEventListener('keydown', onKey);
+        }
+        closeBtn.addEventListener('click', (ev) => { ev.stopPropagation(); closeLightbox(); });
         overlay.appendChild(closeBtn);
 
         overlay.addEventListener('click', (ev) => {
-          if (ev.target === overlay) overlay.remove();
+          if (ev.target === overlay) closeLightbox();
         });
 
         function onKey(ev) {
-          if (ev.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', onKey); }
+          if (ev.key === 'Escape') closeLightbox();
           if (ev.key === 'ArrowLeft' && allUrls.length > 1) { lbIdx = (lbIdx - 1 + allUrls.length) % allUrls.length; lbImg.src = allUrls[lbIdx]; }
           if (ev.key === 'ArrowRight' && allUrls.length > 1) { lbIdx = (lbIdx + 1) % allUrls.length; lbImg.src = allUrls[lbIdx]; }
         }
