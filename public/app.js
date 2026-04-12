@@ -1877,7 +1877,7 @@
                 <div class="score-overview-cmp">Site avg: ${avgLikes} ${diffBadge(likeDiff)}</div>
               </div>
             </div>
-            ${histLen >= 2 ? `<canvas class="score-history-canvas" id="score-history-chart"></canvas>` : ''}
+            <canvas class="score-history-canvas" id="score-history-chart"></canvas>
           </section>`;
           })() : ''}
 
