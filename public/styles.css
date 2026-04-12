@@ -2029,10 +2029,22 @@ a { color: inherit; text-decoration: none; }
 .ai-breakdown-section {
   border-top: 1px solid var(--border);
 }
-.ai-breakdown-text {
+.ai-breakdown-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ai-breakdown-list li {
   color: var(--text-dim);
   font-size: 13px;
-  line-height: 1.6;
+  line-height: 1.5;
+  padding: 8px 12px;
+  background: var(--bg-elev);
+  border-radius: 8px;
+  border-left: 3px solid var(--accent);
 }
 .ai-featured {
   margin: 8px 0 0;

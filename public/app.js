@@ -1588,11 +1588,17 @@
 
           ${commentsSectionHtml}
 
-          ${item.ai_rationale ? `
+          ${item.ai_rationale ? (() => {
+            // Parse rationale into bullet points — GLM separates with " - "
+            const raw = item.ai_rationale;
+            const parts = raw.split(/\s*-\s+/).filter(s => s.trim().length > 3);
+            const bullets = parts.map(p => `<li>${escapeHtml(p.trim())}</li>`).join('');
+            return `
           <section class="detail-section ai-breakdown-section">
             <h2>AI Score Breakdown</h2>
-            <p class="ai-breakdown-text">${escapeHtml(item.ai_rationale)}</p>
-          </section>` : ''}
+            <ul class="ai-breakdown-list">${bullets}</ul>
+          </section>`;
+          })() : ''}
         </div>`;
 
       // Hero CTA buttons — prominent links to the agent's website and/or GitHub
