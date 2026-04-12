@@ -358,8 +358,53 @@ a { color: inherit; text-decoration: none; }
 }
 
 /* ---------- agent shortcut box ---------- */
+/* ---- 1-2-3 step strip ---- */
+.submit-steps-strip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin: 28px auto 18px;
+  max-width: 560px;
+}
+.submit-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.submit-step-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--accent-2, #7c5cff);
+  color: #fff;
+  font-weight: 800;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+.submit-step-text {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+}
+.submit-step-arrow {
+  color: var(--text-dim);
+  font-size: 16px;
+  opacity: 0.5;
+}
+@media (max-width: 520px) {
+  .submit-steps-strip { gap: 6px; }
+  .submit-step-text { font-size: 12px; }
+  .submit-step-num { width: 24px; height: 24px; font-size: 12px; }
+  .submit-step-arrow { font-size: 13px; }
+}
+
 .agent-shortcut {
-  margin: 28px 0 8px;
+  margin: 0 0 8px;
   padding: 20px 22px;
   background: linear-gradient(135deg, rgba(124, 92, 255, 0.14), rgba(255, 138, 61, 0.08));
   border: 1px solid rgba(124, 92, 255, 0.4);
