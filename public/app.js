@@ -924,8 +924,8 @@
             <span class="spotlight-name">${escapeHtml(item.title)}</span>
             ${item.category ? `<span class="spotlight-cat">${escapeHtml(item.category)}</span>` : ''}
             <div class="spotlight-meta">
-              ${item.ai_grade ? `<span class="grade-badge grade-${item.ai_grade.toLowerCase()}">${escapeHtml(item.ai_grade)}</span>` : ''}
-              ${item.likes ? `<span class="spotlight-likes">${item.likes}</span>` : ''}
+              ${item.ai_score != null ? `<span class="spotlight-ai-score">${item.ai_score}</span>` : ''}
+              ${(item.likes - (item.dislikes || 0)) > 0 ? `<span class="spotlight-likes">♥ ${item.likes - (item.dislikes || 0)}</span>` : ''}
             </div>
           </div>
         </a>
@@ -1300,11 +1300,11 @@
           ${hasAiScore ? `
           <div class="score-card ai-card">
             <div class="ai-card-row">
-              <span class="rank-grade grade-${item.ai_grade || 'C'}">${escapeHtml(item.ai_grade || '—')}</span>
+              <span class="rank-grade">${item.ai_score}</span>
               <div>
                 <div class="score-card-title">AI Score</div>
                 <div class="ai-score-num">${item.ai_score}<span class="ai-score-unit"> / 100</span></div>
-                <div class="ai-score-label">${escapeHtml(gradeLabels[item.ai_grade] || 'Unranked')}${aiRankStr ? ` · Ranked ${aiRankStr}` : ''}</div>
+                <div class="ai-score-label">${aiRankStr ? `Ranked ${aiRankStr}` : ''}</div>
               </div>
             </div>
             ${item.featured && item.featured_reason ? `<p class="ai-featured">⭐ ${escapeHtml(item.featured_reason)}</p>` : ''}
@@ -2356,22 +2356,20 @@
         : `<span class="ranking-num">#${rank}</span>`;
 
       const likes = Number(item.likes) || 0;
-      const grade = item.ai_grade || '';
+      const dislikes = Number(item.dislikes) || 0;
+      const netLikes = likes - dislikes;
       const score = item.ai_score || 0;
-      const glabels = { S: 'Legendary', A: 'Elite', B: 'Solid', C: 'Rising', D: 'Starter' };
 
       // Score display differs by view
       let scoreBlock;
-      if (view === 'ai' && grade) {
+      if (view === 'ai' && score) {
         scoreBlock = `<div class="ranking-score-block">
           <span class="ranking-score-num">${score}</span>
-          <span class="grade-badge grade-${grade.toLowerCase()}">${escapeHtml(grade)}</span>
-          <span class="ranking-score-label">${escapeHtml(glabels[grade] || '')}</span>
+          <span class="ranking-score-label">AI Score</span>
         </div>`;
       } else {
         scoreBlock = `<div class="ranking-score-block">
-          <span class="ranking-likes-num">♥ ${likes}</span>
-          ${grade ? `<span class="grade-badge grade-${grade.toLowerCase()}">${escapeHtml(grade)}</span>` : ''}
+          <span class="ranking-likes-num">♥ ${netLikes}</span>
         </div>`;
       }
 

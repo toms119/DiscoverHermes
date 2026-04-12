@@ -9,7 +9,8 @@
   --accent: #ff7a59;
   --accent-2: #ffb86b;
   --accent-soft: rgba(255, 122, 89, 0.12);
-  --heart: #ff4d6d;
+  --heart: #ff8a3d;
+  --downvote: #e53e3e;
   --radius: 14px;
   --maxw: 1280px;
 }
@@ -310,9 +311,16 @@ a { color: inherit; text-decoration: none; }
   font-weight: 600;
   color: var(--heart);
 }
-.spotlight-likes::before {
-  content: '♥ ';
-  font-size: 11px;
+.spotlight-ai-score {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent);
+}
+.spotlight-ai-score::after {
+  content: ' AI';
+  font-size: 10px;
+  font-weight: 500;
+  opacity: 0.7;
 }
 @media (max-width: 640px) {
   .spotlight-card { flex: 0 0 200px; }
@@ -1474,11 +1482,11 @@ a { color: inherit; text-decoration: none; }
   font-family: inherit;
   transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
 }
-.dislike-btn:hover { border-color: #888; color: #888; }
+.dislike-btn:hover { border-color: var(--downvote); color: var(--downvote); }
 .dislike-btn.disliked {
-  color: #888;
-  border-color: #888;
-  background: rgba(136, 136, 136, 0.1);
+  color: var(--downvote);
+  border-color: var(--downvote);
+  background: rgba(229, 62, 62, 0.1);
 }
 .dislike-btn .thumb-down::before {
   content: "▾";
