@@ -177,6 +177,10 @@ const DESIRED_COLUMNS = {
   verified:              'INTEGER',       // 0/1 — flipped by Stripe webhook
   verified_at:           'TEXT',          // timestamp of payment
   stripe_session_id:     'TEXT',          // idempotency: reject duplicate webhooks
+  // v4: additional signal fields for AI scoring accuracy
+  error_rate:            'INTEGER',       // 0-100 pct of runs that errored/retried
+  multi_agent:           'INTEGER',       // 0/1 — delegates to sub-agents
+  output_format:         'TEXT',          // structured-data | natural-language | code | mixed
   // AI scoring fields — populated by daily automated review
   ai_score:              'REAL',          // 0-100 composite score (decimal)
   ai_grade:              'TEXT',          // S, A, B, C, D
@@ -497,6 +501,7 @@ function hydrate(row) {
   for (const c of jsonCols) row[c] = parseJson(row[c], []);
   row.tool_use = row.tool_use == null ? null : !!row.tool_use;
   row.rag = row.rag == null ? null : !!row.rag;
+  row.multi_agent = row.multi_agent == null ? null : !!row.multi_agent;
   row.verified = !!row.verified;
   row.featured = !!row.featured;
   delete row.delete_token_hash;
@@ -932,6 +937,9 @@ app.post('/api/submissions', smallJson, submitLimiter, submitLimiterDaily, (req,
     twitter_handle: normalizedHandle,
     website:        clean(b.website, 200),
     agent_framework: clean(b.agent_framework, 40) || null,
+    error_rate:      cleanInt(b.error_rate, 100),
+    multi_agent:     cleanBool(b.multi_agent),
+    output_format:   (['structured-data','natural-language','code','mixed'].includes(b.output_format) ? b.output_format : null),
     ai_score_pending: 1,  // New submissions await AI scoring
   };
   if (row.website && !isHttpUrl(row.website)) row.website = null;
@@ -999,6 +1007,7 @@ const EDITABLE_FIELDS = new Set([
   'display_name', 'website', 'agent_framework', 'twitter_handle',
   'total_interactions', 'active_users', 'tasks_completed',
   'runs_completed', 'hours_used', 'tokens_total', 'time_saved_per_week',
+  'error_rate', 'multi_agent', 'output_format',
 ]);
 app.patch('/api/submissions/:id', smallJson, mutationLimiter, (req, res) => {
   const id = Number(req.params.id);
@@ -1132,10 +1141,20 @@ app.patch('/api/submissions/:id', smallJson, mutationLimiter, (req, res) => {
     patch.agent_framework = clean(patch.agent_framework, 40) || null;
   }
   // Numeric metric fields — agents can PATCH these to keep stats fresh
-  for (const numField of ['total_interactions', 'active_users', 'tasks_completed', 'runs_completed', 'hours_used', 'tokens_total', 'time_saved_per_week']) {
+  for (const numField of ['total_interactions', 'active_users', 'tasks_completed', 'runs_completed', 'hours_used', 'tokens_total', 'time_saved_per_week', 'error_rate']) {
     if (numField in patch) {
       patch[numField] = cleanInt(patch[numField], 1_000_000_000_000);
     }
+  }
+  if ('error_rate' in patch) {
+    patch.error_rate = Math.min(patch.error_rate || 0, 100);
+  }
+  if ('multi_agent' in patch) {
+    patch.multi_agent = cleanBool(patch.multi_agent);
+  }
+  if ('output_format' in patch) {
+    const validFormats = ['structured-data','natural-language','code','mixed'];
+    patch.output_format = validFormats.includes(patch.output_format) ? patch.output_format : null;
   }
 
   // Safety scan across any free-text edits, same as POST.

@@ -1031,7 +1031,8 @@
 
       const hasInfra =
         item.model || item.model_provider || item.deployment || item.host ||
-        item.context_window || item.memory_type || item.tool_use != null || item.rag != null;
+        item.context_window || item.memory_type || item.tool_use != null || item.rag != null ||
+        item.multi_agent != null || item.output_format || item.error_rate != null;
 
       const hasMetrics =
         item.running_since || item.time_saved_per_week || item.runs_completed ||
@@ -1394,6 +1395,9 @@
         ${sideKv('Memory', item.memory_type)}
         ${sideKv('Tool use', item.tool_use == null ? null : (item.tool_use ? 'yes' : 'no'))}
         ${sideKv('RAG', item.rag == null ? null : (item.rag ? 'yes' : 'no'))}
+        ${sideKv('Multi-agent', item.multi_agent == null ? null : (item.multi_agent ? 'yes' : 'no'))}
+        ${sideKv('Output', item.output_format ? humanize(item.output_format) : null)}
+        ${sideKv('Error rate', item.error_rate != null ? item.error_rate + '%' : null)}
       ` : '';
       const infraCard = sideCard('Infrastructure', infraBody);
 
