@@ -957,16 +957,17 @@ app.patch('/api/submissions/:id', smallJson, (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) return res.status(400).json({ error: 'invalid id' });
 
-  const token =
-    (req.body && req.body.token) || req.query.token || req.get('x-delete-token');
-  if (!token || typeof token !== 'string') {
-    return res.status(401).json({ error: 'delete token required' });
-  }
-
   const existing = db.prepare('SELECT * FROM submissions WHERE id = ?').get(id);
   if (!existing) return res.status(404).json({ error: 'not found' });
-  if (!verifyDeleteToken(id, token)) {
-    return res.status(403).json({ error: 'invalid delete token' });
+
+  // Auth: delete token (author) OR admin token
+  const token =
+    (req.body && req.body.token) || req.query.token || req.get('x-delete-token');
+  const adminToken = req.get('x-admin-token');
+  const authorizedByDelete = token && verifyDeleteToken(id, token);
+  const authorizedByAdmin = adminToken && adminToken === ADMIN_TOKEN;
+  if (!authorizedByDelete && !authorizedByAdmin) {
+    return res.status(403).json({ error: 'valid delete token or admin token required' });
   }
 
   const b = req.body || {};
@@ -1079,6 +1080,9 @@ app.patch('/api/submissions/:id', smallJson, (req, res) => {
       return res.status(400).json({ error: 'website must be an http(s) URL' });
     }
     patch.website = v || null;
+  }
+  if ('agent_framework' in patch) {
+    patch.agent_framework = clean(patch.agent_framework, 40) || null;
   }
 
   // Safety scan across any free-text edits, same as POST.
@@ -1726,86 +1730,21 @@ app.post('/api/admin/github-stats', smallJson, async (req, res) => {
 // PATCH /api/submissions/:id — edit submission content
 // Uses delete token (author edits own) OR admin token (admin edits any)
 // Whitelisted fields: title, pitch, story, image_url, image_prompt, display_name, website
-app.patch('/api/submissions/:id', smallJson, (req, res) => {
-  const id = Number(req.params.id);
-  if (!Number.isInteger(id)) return res.status(400).json({ error: 'invalid id' });
-
-  const row = db.prepare('SELECT 1 FROM submissions WHERE id = ?').get(id);
-  if (!row) return res.status(404).json({ error: 'not found' });
-
-  // Auth: delete token (author) OR admin token
-  const token = (req.body && req.body.token) || req.get('x-delete-token');
-  const adminToken = req.get('x-admin-token');
-
-  const authorizedByDelete = token && verifyDeleteToken(id, token);
-  const authorizedByAdmin = adminToken && adminToken === ADMIN_TOKEN;
-
-  if (!authorizedByDelete && !authorizedByAdmin) {
-    return res.status(403).json({ error: 'invalid delete token or unauthorized' });
-  }
-
-  const b = req.body || {};
-
-  // Whitelist of editable fields
-  const updates = {};
-  const now = new Date().toISOString();
-
-  if (typeof b.title === 'string' && b.title.trim()) {
-    updates.title = clean(b.title, 120);
-  }
-  if (typeof b.pitch === 'string') {
-    updates.pitch = clean(b.pitch, 500);
-  }
-  if (typeof b.story === 'string') {
-    updates.story = clean(b.story, 5000);
-  }
-  if (typeof b.image_url === 'string') {
-    updates.image_url = clean(b.image_url, 500);
-  }
-  if (typeof b.image_prompt === 'string') {
-    updates.image_prompt = clean(b.image_prompt, 1000);
-  }
-  if (typeof b.display_name === 'string') {
-    updates.display_name = clean(b.display_name, 60);
-  }
-  if (typeof b.website === 'string') {
-    const website = clean(b.website, 200);
-    updates.website = website && isHttpUrl(website) ? website : null;
-  }
-
-  // Always update last_updated_at when editing
-  updates.last_updated_at = now;
-
-  // Scan for secrets in all updated text fields
-  const secret = scanForSecrets(Object.values(updates));
-  if (secret) {
-    return res.status(400).json({ error: `looks like a ${secret}; redact and retry` });
-  }
-
-  if (Object.keys(updates).length === 1 && updates.last_updated_at) {
-    // Only timestamp update, nothing else changed
-    return res.status(400).json({ error: 'no valid fields to update' });
-  }
-
-  const setClauses = Object.keys(updates).map(k => `${k} = ?`).join(', ');
-  const values = Object.keys(updates).map(k => updates[k]);
-
-  db.prepare(`UPDATE submissions SET ${setClauses} WHERE id = ?`).run(...values, id);
-  const updated = db.prepare('SELECT * FROM submissions WHERE id = ?').get(id);
-  res.json(hydrate(updated));
-});
-
 // ---------- admin (token-gated) ----------
 app.post('/api/admin/submissions/:id/approve', smallJson, requireAdmin, (req, res) => {
   const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return res.status(400).json({ error: 'invalid id' });
   const approved = req.body && req.body.approved === false ? 0 : 1;
-  db.prepare('UPDATE submissions SET approved = ? WHERE id = ?').run(approved, id);
+  const info = db.prepare('UPDATE submissions SET approved = ? WHERE id = ?').run(approved, id);
+  if (info.changes === 0) return res.status(404).json({ error: 'not found' });
   res.json({ ok: true });
 });
 
 app.delete('/api/admin/submissions/:id', requireAdmin, (req, res) => {
   const id = Number(req.params.id);
-  db.prepare('DELETE FROM submissions WHERE id = ?').run(id);
+  if (!Number.isInteger(id)) return res.status(400).json({ error: 'invalid id' });
+  const info = db.prepare('DELETE FROM submissions WHERE id = ?').run(id);
+  if (info.changes === 0) return res.status(404).json({ error: 'not found' });
   res.json({ ok: true });
 });
 
@@ -1840,12 +1779,13 @@ app.patch('/api/submissions/:id/score', smallJson, (req, res) => {
     return res.status(400).json({ error: 'ai_score is required (0-100)' });
   }
   
-  db.prepare(`
-    UPDATE submissions 
+  const info = db.prepare(`
+    UPDATE submissions
     SET ai_score = ?, ai_grade = ?, featured = ?, featured_reason = ?, last_reviewed_at = ?
     WHERE id = ?
   `).run(aiScore, aiGrade, featured, featuredReason, now, id);
-  
+  if (info.changes === 0) return res.status(404).json({ error: 'not found' });
+
   const row = db.prepare('SELECT * FROM submissions WHERE id = ?').get(id);
   res.json(hydrate(row));
 });

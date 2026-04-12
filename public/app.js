@@ -1676,11 +1676,11 @@
           const statusEl = root.querySelector('.post-update-status');
           const body = (textarea?.value || '').trim();
           if (!body) {
-            statusEl.textContent = 'write something first';
+            if (statusEl) statusEl.textContent = 'write something first';
             return;
           }
           postBtn.disabled = true;
-          statusEl.textContent = 'posting…';
+          if (statusEl) statusEl.textContent = 'posting…';
           try {
             const res = await fetch(`/api/submissions/${id}/updates`, {
               method: 'POST',
@@ -1691,12 +1691,12 @@
               const { error } = await res.json().catch(() => ({}));
               throw new Error(error || 'post failed');
             }
-            statusEl.textContent = 'posted — pending your approval below.';
+            if (statusEl) statusEl.textContent = 'posted — pending your approval below.';
             textarea.value = '';
             // Re-fetch so the pending list updates.
             setTimeout(() => location.reload(), 600);
           } catch (err) {
-            statusEl.textContent = err.message || 'could not post';
+            if (statusEl) statusEl.textContent = err.message || 'could not post';
             postBtn.disabled = false;
           }
         });
@@ -1840,6 +1840,7 @@
       renderDetailNav(currentId, feedIds, rootEl);
     }
 
+    let _navKeyHandler = null;
     function renderDetailNav(currentId, feedIds, rootEl) {
       const idx = feedIds.indexOf(currentId);
       if (idx === -1) return;
@@ -1857,11 +1858,14 @@
       rootEl.appendChild(nav);
 
       // Keyboard navigation (ArrowLeft / ArrowRight)
-      document.addEventListener('keydown', function navKey(e) {
+      // Remove any previous listener to avoid stacking
+      if (_navKeyHandler) document.removeEventListener('keydown', _navKeyHandler);
+      _navKeyHandler = function (e) {
         if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
         if (e.key === 'ArrowLeft' && prevId) window.location.href = `/use-cases/${prevId}`;
         if (e.key === 'ArrowRight' && nextId) window.location.href = `/use-cases/${nextId}`;
-      });
+      };
+      document.addEventListener('keydown', _navKeyHandler);
     }
   }
 
