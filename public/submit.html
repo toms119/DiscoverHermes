@@ -258,6 +258,9 @@ point of paste-and-go is that YOU do the hard thinking, not me.
           card still works, and I can add one later via an update.
           If I reply with edits instead of approval, apply them
           and resend the text preview — same single-message format.
+          If I gave you MULTIPLE images (screenshot + generate),
+          post with one as hero, then immediately PATCH gallery_add
+          with the other. Do NOT ask — just add both.
 
   Step G: STORE TO MEMORY + final handoff (Parts 13–14).
 
@@ -566,10 +569,20 @@ generation entirely and go straight to STEP 2 (upload).
 If the user replies with just "yes, post it" or "A" or "generate it"
 or "surprise me", fall through to STEP 1 (generate).
 
-Either way, the user can add up to 4 MORE images to the card later
+MULTIPLE IMAGES: If the user provides a screenshot AND asks you to
+generate an image too, do BOTH:
+  1. Use whichever they want as the hero image_url (ask or pick the
+     screenshot — real screenshots are usually more compelling).
+  2. Immediately after the POST succeeds, PATCH the card to add the
+     other image to the gallery using gallery_add:
+       PATCH /api/submissions/:id
+       Body: { "delete_token": "...", "gallery_add": "/u/..." }
+     Do NOT say "want me to add it?" — just do it. The user asked
+     for both images, so add both.
+
+The card supports up to 10 gallery images. The user can add more later
 from the detail page — there's a "+ Add image" tile in the Gallery
-section once the card is posted. Tell them this in your final
-handoff message so they know they can flex more screenshots later.
+section. Mention this in your final handoff message.
 
 ───── STEP 1: GENERATE THE IMAGE (SKIP IF USER PROVIDED A SCREENSHOT) ─────
 
