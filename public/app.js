@@ -318,11 +318,10 @@
       const galleryCount = (item.image_url ? 1 : 0) + gallery.length;
       const galleryBadge = galleryCount > 1
         ? `<span class="gallery-badge" title="${galleryCount} images">📷 ${galleryCount}</span>` : '';
-      // AI grade badge — show pending or letter grade
-      const gradeBadge = item.ai_score_pending
-        ? `<span class="grade-badge grade-pending">Pending…</span>`
-        : item.ai_grade
-          ? `<span class="grade-badge grade-${item.ai_grade.toLowerCase()}">${escapeHtml(item.ai_grade)}</span>` : '';
+      // AI score pill — shown in footer next to likes for clean comparison
+      const aiScorePill = item.ai_score
+        ? `<span class="card-ai-score" title="AI Score: ${item.ai_score}/100"><span class="card-ai-num">${item.ai_score}</span> AI Score</span>`
+        : (item.ai_score_pending ? `<span class="card-ai-score card-ai-pending">Pending…</span>` : '');
       const achievs = achievementBadges(item);
       return `
         <div class="${cls.join(' ')}" data-href="/use-cases/${item.id}" data-id="${item.id}">
@@ -334,8 +333,11 @@
             ${achievs ? `<div class="achiev-row">${achievs}</div>` : ''}
             <div class="chip-row">${chipRow(item)}</div>
             <div class="card-foot">
-              <span class="card-author">${handleBlock(item)}${verifiedBadge(item)}${gradeBadge}</span>
-              ${likeBtnHtml(item)}
+              <span class="card-author">${handleBlock(item)}${verifiedBadge(item)}</span>
+              <div class="card-foot-scores">
+                ${aiScorePill}
+                ${likeBtnHtml(item)}
+              </div>
             </div>
           </div>
         </div>`;
@@ -1107,29 +1109,44 @@
           </div>
         </div>` : '';
 
-      // AI score card — includes a deep-link to the full rankings page so
-      // visitors can jump from "this one got a 78/B+" to "how does that
-      // stack up against every other agent in the category?"
+      // AI + Human score cards — placed in hero area for instant visibility
       const rankingsHref = item.category
         ? `/rankings?category=${encodeURIComponent(item.category)}`
         : '/rankings';
       const gradeLabels = { S: 'Legendary', A: 'Elite', B: 'Solid', C: 'Rising', D: 'Starter' };
-      const aiCard = hasAiScore ? `
-        <div class="side-card ai-card">
-          <h3>⚔️ Agent Power Level</h3>
-          <div class="ai-card-row">
-            <span class="rank-grade grade-${item.ai_grade || 'C'}">${escapeHtml(item.ai_grade || '—')}</span>
-            <div>
-              <div class="ai-score-label">${escapeHtml(gradeLabels[item.ai_grade] || 'Unranked')}</div>
-              <div class="ai-score-num">${item.ai_score}<span class="ai-score-unit"> XP</span></div>
-              <div class="xp-bar"><div class="xp-fill" style="width: ${item.ai_score}%"></div></div>
+      const aiRankStr = item.ai_rank != null
+        ? `#${item.ai_rank}${item.total_scored != null ? ` of ${item.total_scored}` : ''}`
+        : null;
+      const likesCount = Number(item.likes) || 0;
+      const likesRankStr = item.likes_rank != null
+        ? `#${item.likes_rank}${item.total_agents != null ? ` of ${item.total_agents}` : ''}`
+        : null;
+      const scoreCardsHtml = `
+        <div class="score-cards-strip">
+          ${hasAiScore ? `
+          <div class="score-card ai-card">
+            <div class="ai-card-row">
+              <span class="rank-grade grade-${item.ai_grade || 'C'}">${escapeHtml(item.ai_grade || '—')}</span>
+              <div>
+                <div class="score-card-title">AI Score</div>
+                <div class="ai-score-num">${item.ai_score}<span class="ai-score-unit"> / 100</span></div>
+                <div class="ai-score-label">${escapeHtml(gradeLabels[item.ai_grade] || 'Unranked')}${aiRankStr ? ` · Ranked ${aiRankStr}` : ''}</div>
+              </div>
+            </div>
+            ${item.featured && item.featured_reason ? `<p class="ai-featured">⭐ ${escapeHtml(item.featured_reason)}</p>` : ''}
+          </div>` : ''}
+          <div class="score-card human-card">
+            <div class="ai-card-row">
+              <span class="rank-grade human-grade">♥</span>
+              <div>
+                <div class="score-card-title">Human Score</div>
+                <div class="ai-score-num">${likesCount}<span class="ai-score-unit"> like${likesCount !== 1 ? 's' : ''}</span></div>
+                <div class="ai-score-label">${likesCount === 0 ? 'No votes yet' : likesCount === 1 ? '1 person loves this' : likesCount + ' people love this'}${likesRankStr ? ` · Ranked ${likesRankStr}` : ''}</div>
+              </div>
             </div>
           </div>
-          ${item.featured && item.featured_reason ? `<p class="ai-featured">⭐ ${escapeHtml(item.featured_reason)}</p>` : ''}
-          <a class="ai-rankings-link" href="${rankingsHref}">
-            View leaderboard ↗
-          </a>
-        </div>` : '';
+          <a class="score-cards-link" href="${rankingsHref}">View leaderboard ↗</a>
+        </div>`;
 
       // Build profile card (complexity, tiers, etc.). Satisfaction lived
       // here as a row of dots — removed, since it looked like a UI control
@@ -1178,24 +1195,7 @@
       const tagsBody = hasTags ? sideChipList(item.tags) : '';
       const tagsCard = sideCard('Tags', tagsBody);
 
-      // Rankings + community card — always show (even 0 likes is meaningful).
-      // Rank is rendered as "#N of M" so visitors see the size of the pool.
-      // total_agents = all approved submissions (the Likes pool).
-      // total_scored = approved submissions with an ai_score (the AI pool).
-      const likesRankStr = item.likes_rank != null
-        ? `#${item.likes_rank}${item.total_agents != null ? ` of ${item.total_agents}` : ''}`
-        : null;
-      const aiRankStr = item.ai_rank != null
-        ? `#${item.ai_rank}${item.total_scored != null ? ` of ${item.total_scored}` : ''}`
-        : null;
-      const rankCard = `
-        <div class="side-card rank-card">
-          <h3>Community</h3>
-          ${sideKv('Likes', String(Number(item.likes) || 0))}
-          ${likesRankStr ? sideKv('Likes rank', likesRankStr) : ''}
-          ${aiRankStr ? sideKv('AI score rank', aiRankStr) : ''}
-          <a class="ai-rankings-link" href="/rankings">View all rankings ↗</a>
-        </div>`;
+      // rankCard removed — AI/Human score cards now include rank info
 
       // ---------- gallery (secondary images, max 5) ----------
       // Author can add screenshots of the dashboard / terminal / output
@@ -1440,15 +1440,15 @@
           </div>
         </div>
 
+        ${scoreCardsHtml}
+
         ${gallerySectionHtml}
 
         <div class="detail-layout">
           <aside class="detail-side detail-side-left">
             ${authorCard}
             ${engagementCard}
-            ${rankCard}
             ${metricHtml}
-            ${aiCard}
             ${buildCard}
             ${techCard}
             ${infraCard}
