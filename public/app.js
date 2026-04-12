@@ -269,11 +269,11 @@
           ${badge}
           ${mediaBlock(item)}
           <div class="card-body">
-            <h3 class="card-title">${escapeHtml(item.title)}${verifiedBadge(item)}</h3>
+            <h3 class="card-title">${escapeHtml(item.title)}</h3>
             <p class="card-pitch">${escapeHtml(item.pitch || item.description || '')}</p>
             <div class="chip-row">${chipRow(item)}</div>
             <div class="card-foot">
-              ${handleBlock(item)}
+              <span class="card-author">${handleBlock(item)}${verifiedBadge(item)}</span>
               ${likeBtnHtml(item)}
             </div>
           </div>

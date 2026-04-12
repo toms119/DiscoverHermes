@@ -754,7 +754,7 @@ a { color: inherit; text-decoration: none; }
   line-height: 1.3;
   color: var(--text);
   display: -webkit-box;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
@@ -1985,9 +1985,15 @@ pre code { background: transparent; padding: 0; }
   background: #42d6a4;
   color: #0b0e17;
 }
-.card-title .verified-badge {
-  margin-left: 6px;
-  transform: translateY(-1px);
+.card-author {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.card-author .verified-badge {
+  flex-shrink: 0;
 }
 .detail-head .verified-badge {
   margin-left: 8px;
