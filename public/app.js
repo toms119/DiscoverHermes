@@ -110,15 +110,36 @@
     }
   }
 
-  // ---------- likes: shared liked-id set across pages ----------
+  // ---------- likes & dislikes: shared voted-id sets across pages ----------
   const LIKED_KEY = 'dh_liked_ids_v1';
+  const DISLIKED_KEY = 'dh_disliked_ids_v1';
   const likedSet = new Set(JSON.parse(localStorage.getItem(LIKED_KEY) || '[]'));
+  const dislikedSet = new Set(JSON.parse(localStorage.getItem(DISLIKED_KEY) || '[]'));
   const saveLiked = () => localStorage.setItem(LIKED_KEY, JSON.stringify([...likedSet]));
+  const saveDisliked = () => localStorage.setItem(DISLIKED_KEY, JSON.stringify([...dislikedSet]));
 
   async function toggleLike(id, btn) {
     const wasLiked = likedSet.has(id);
     const countEl = btn.querySelector('.count');
     const current = Number(countEl.textContent) || 0;
+
+    // If currently disliked, undo dislike first
+    if (dislikedSet.has(id)) {
+      dislikedSet.delete(id);
+      saveDisliked();
+      const disBtn = btn.closest('.vote-group')?.querySelector('.dislike-btn');
+      if (disBtn) {
+        disBtn.classList.remove('disliked');
+        disBtn.setAttribute('aria-pressed', 'false');
+        const disCt = disBtn.querySelector('.count');
+        if (disCt) disCt.textContent = Math.max(0, (Number(disCt.textContent) || 0) - 1);
+      }
+      fetch(`/api/submissions/${id}/dislike`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ undislike: true, _t: window._likeToken }),
+      }).catch(() => {});
+    }
 
     if (wasLiked) {
       likedSet.delete(id);
@@ -130,7 +151,6 @@
       btn.classList.add('liked');
       btn.setAttribute('aria-pressed', 'true');
       countEl.textContent = current + 1;
-      // Heart burst animation
       btn.classList.add('like-burst');
       btn.addEventListener('animationend', () => btn.classList.remove('like-burst'), { once: true });
     }
@@ -151,14 +171,73 @@
     }
   }
 
+  async function toggleDislike(id, btn) {
+    const wasDisliked = dislikedSet.has(id);
+    const countEl = btn.querySelector('.count');
+    const current = Number(countEl.textContent) || 0;
+
+    // If currently liked, undo like first
+    if (likedSet.has(id)) {
+      likedSet.delete(id);
+      saveLiked();
+      const likeBtn = btn.closest('.vote-group')?.querySelector('.like-btn');
+      if (likeBtn) {
+        likeBtn.classList.remove('liked');
+        likeBtn.setAttribute('aria-pressed', 'false');
+        const likeCt = likeBtn.querySelector('.count');
+        if (likeCt) likeCt.textContent = Math.max(0, (Number(likeCt.textContent) || 0) - 1);
+      }
+      fetch(`/api/submissions/${id}/like`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ unlike: true, _t: window._likeToken }),
+      }).catch(() => {});
+    }
+
+    if (wasDisliked) {
+      dislikedSet.delete(id);
+      btn.classList.remove('disliked');
+      btn.setAttribute('aria-pressed', 'false');
+      countEl.textContent = Math.max(0, current - 1);
+    } else {
+      dislikedSet.add(id);
+      btn.classList.add('disliked');
+      btn.setAttribute('aria-pressed', 'true');
+      countEl.textContent = current + 1;
+    }
+    saveDisliked();
+
+    try {
+      const res = await fetch(`/api/submissions/${id}/dislike`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ undislike: wasDisliked, _t: window._likeToken }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        countEl.textContent = data.dislikes;
+      }
+    } catch {
+      /* optimistic UI is fine */
+    }
+  }
+
   function likeBtnHtml(item) {
     const liked = likedSet.has(item.id);
+    const disliked = dislikedSet.has(item.id);
     return `
-      <button class="like-btn ${liked ? 'liked' : ''}" data-id="${item.id}"
-              aria-pressed="${liked}">
-        <span class="heart"></span>
-        <span class="count">${item.likes}</span>
-      </button>`;
+      <span class="vote-group">
+        <button class="like-btn ${liked ? 'liked' : ''}" data-id="${item.id}"
+                aria-pressed="${liked}">
+          <span class="heart"></span>
+          <span class="count">${item.likes}</span>
+        </button>
+        <button class="dislike-btn ${disliked ? 'disliked' : ''}" data-id="${item.id}"
+                aria-pressed="${disliked}" title="Flag as low quality or fake">
+          <span class="thumb-down"></span>
+          <span class="count">${item.dislikes || 0}</span>
+        </button>
+      </span>`;
   }
 
   // ---------- rendering: shared card pieces ----------
@@ -510,6 +589,15 @@
       e.preventDefault();
       e.stopPropagation();
       toggleLike(Number(btn.dataset.id), btn);
+    });
+
+    // Dislike click — event delegation
+    feedEl.addEventListener('click', async (e) => {
+      const btn = e.target.closest('.dislike-btn');
+      if (!btn) return;
+      e.preventDefault();
+      e.stopPropagation();
+      toggleDislike(Number(btn.dataset.id), btn);
     });
 
     // Card click — navigate to detail page.
@@ -1202,6 +1290,8 @@
         ? `#${item.ai_rank}${item.total_scored != null ? ` of ${item.total_scored}` : ''}`
         : null;
       const likesCount = Number(item.likes) || 0;
+      const dislikesCount = Number(item.dislikes) || 0;
+      const netScore = likesCount - dislikesCount;
       const likesRankStr = item.likes_rank != null
         ? `#${item.likes_rank}${item.total_agents != null ? ` of ${item.total_agents}` : ''}`
         : null;
@@ -1234,8 +1324,8 @@
               <span class="rank-grade human-grade">♥</span>
               <div>
                 <div class="score-card-title">Human Score</div>
-                <div class="ai-score-num">${likesCount}<span class="ai-score-unit"> like${likesCount !== 1 ? 's' : ''}</span></div>
-                <div class="ai-score-label">${likesCount === 0 ? 'Be the first to vote' : 'Community votes'}${likesRankStr ? ` · Ranked ${likesRankStr}` : ''}</div>
+                <div class="ai-score-num">${netScore}<span class="ai-score-unit"> net</span></div>
+                <div class="ai-score-label">${likesCount} up · ${dislikesCount} down${likesRankStr ? ` · Ranked ${likesRankStr}` : ''}</div>
               </div>
             </div>
           </div>
@@ -1572,6 +1662,13 @@
         likeBtn.addEventListener('click', (e) => {
           e.preventDefault();
           toggleLike(Number(likeBtn.dataset.id), likeBtn);
+        });
+      }
+      const dislikeBtn = root.querySelector('.dislike-btn');
+      if (dislikeBtn) {
+        dislikeBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          toggleDislike(Number(dislikeBtn.dataset.id), dislikeBtn);
         });
       }
 
@@ -2230,6 +2327,14 @@
             e.preventDefault();
             e.stopPropagation();
             toggleLike(Number(btn.dataset.id), btn);
+          });
+        });
+        // Wire up dislike buttons
+        grid.querySelectorAll('.dislike-btn').forEach((btn) => {
+          btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            toggleDislike(Number(btn.dataset.id), btn);
           });
         });
         // Card click → detail

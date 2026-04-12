@@ -151,6 +151,7 @@ const DESIRED_COLUMNS = {
   total_interactions:    'INTEGER',       // total conversations/sessions handled
   active_users:          'INTEGER',       // unique people using this agent
   tasks_completed:       'INTEGER',       // specific tasks completed to success
+  dislikes:              'INTEGER',       // community downvotes for curation
   last_updated_at:       'TEXT',          // set whenever a PATCH lands
   complexity_tier:       'TEXT',          // beginner | intermediate | advanced | expert
   gotchas:               'TEXT',          // JSON array of short bullets
@@ -1190,11 +1191,11 @@ app.get('/api/submissions', (req, res) => {
   let order;
   switch (req.query.sort) {
     case 'top':
-      order = 'likes DESC, created_at DESC';
+      order = '(likes - COALESCE(dislikes, 0)) DESC, created_at DESC';
       break;
     case 'trending':
-      // Classic HN-ish hotness: recent likes weigh more than old ones.
-      order = `(likes + 1.0) / POW((julianday('now') - julianday(created_at)) * 24 + 2, 1.5) DESC`;
+      // Classic HN-ish hotness: net votes weigh more when recent.
+      order = `(likes - COALESCE(dislikes, 0) + 1.0) / POW((julianday('now') - julianday(created_at)) * 24 + 2, 1.5) DESC`;
       break;
     case 'complexity':
       order = `CASE complexity_tier
@@ -1513,7 +1514,29 @@ app.post('/api/submissions/:id/like', smallJson, likeLimiter, (req, res) => {
     .prepare('UPDATE submissions SET likes = MAX(0, likes + ?) WHERE id = ? AND approved = 1')
     .run(delta, id);
   if (result.changes === 0) return res.status(404).json({ error: 'not found' });
-  const row = db.prepare('SELECT id, likes FROM submissions WHERE id = ?').get(id);
+  const row = db.prepare('SELECT id, likes, dislikes FROM submissions WHERE id = ?').get(id);
+  res.json(row);
+});
+
+// ---------- dislikes (downvotes for curation) ----------
+const dislikeLimiter = rateLimit({ windowMs: 60 * 1000, limit: 30 });
+app.post('/api/submissions/:id/dislike', smallJson, dislikeLimiter, (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return res.status(400).json({ error: 'invalid id' });
+
+  // Anti-bot: same checks as likes
+  if (req.body && req.body.website) {
+    return res.status(200).json({ id, dislikes: 0 });
+  }
+  if (!req.body || !req.body._t) {
+    return res.status(200).json({ id, dislikes: 0 });
+  }
+
+  const delta = req.body.undislike ? -1 : 1;
+  db.prepare('UPDATE submissions SET dislikes = MAX(0, COALESCE(dislikes, 0) + ?) WHERE id = ? AND approved = 1')
+    .run(delta, id);
+  const row = db.prepare('SELECT id, dislikes FROM submissions WHERE id = ?').get(id);
+  if (!row) return res.status(404).json({ error: 'not found' });
   res.json(row);
 });
 
@@ -1624,6 +1647,7 @@ app.get('/api/stats', (_req, res) => {
   const totals = {
     total_agents:       one(`SELECT COUNT(*) AS n FROM submissions WHERE approved = 1`).n,
     total_likes:        one(`SELECT COALESCE(SUM(likes), 0) AS n FROM submissions WHERE approved = 1`).n,
+    total_dislikes:     one(`SELECT COALESCE(SUM(dislikes), 0) AS n FROM submissions WHERE approved = 1`).n,
     total_hours_saved:  one(`SELECT COALESCE(SUM(time_saved_per_week), 0) AS n FROM submissions WHERE approved = 1`).n,
     total_tokens:       one(`SELECT COALESCE(SUM(tokens_total), 0) AS n FROM submissions WHERE approved = 1`).n,
     total_runs:         one(`SELECT COALESCE(SUM(runs_completed), 0) AS n FROM submissions WHERE approved = 1`).n,

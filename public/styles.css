@@ -1453,6 +1453,41 @@ a { color: inherit; text-decoration: none; }
 }
 .like-btn.liked .heart::before { content: "♥"; }
 
+/* vote group — like + dislike side by side */
+.vote-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.dislike-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: transparent;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+.dislike-btn:hover { border-color: #888; color: #888; }
+.dislike-btn.disliked {
+  color: #888;
+  border-color: #888;
+  background: rgba(136, 136, 136, 0.1);
+}
+.dislike-btn .thumb-down::before {
+  content: "▾";
+  font-size: 14px;
+  position: relative;
+  top: 0px;
+}
+.dislike-btn.disliked .thumb-down::before { content: "▾"; font-weight: 800; }
+
 /* ----------------------------------------------------------------
    MOBILE CARD OVERRIDES — card-media is already mobile-first (2:1,
    160px cap) in the base rule above. These handle the remaining
@@ -1475,6 +1510,7 @@ a { color: inherit; text-decoration: none; }
   .chip       { font-size: 10px; padding: 2px 6px; }
   .card-foot  { font-size: 11px; padding-top: 6px; }
   .card-foot .like-btn { font-size: 11px; padding: 4px 8px; }
+  .card-foot .dislike-btn { font-size: 11px; padding: 4px 6px; }
   .new-badge, .trending-badge { font-size: 9px; padding: 2px 6px; }
   .gallery-badge { font-size: 9px; padding: 3px 7px; }
   .grade-badge { width: 18px; height: 18px; font-size: 9px; border-radius: 4px; }
