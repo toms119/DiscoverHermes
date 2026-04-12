@@ -93,6 +93,7 @@ a { color: inherit; text-decoration: none; }
 @media (max-width: 900px) {
   .site-header {
     flex-wrap: wrap;
+    padding: 16px 12px 6px;
   }
   .site-header nav {
     width: 100%;
@@ -100,6 +101,14 @@ a { color: inherit; text-decoration: none; }
     overflow-x: auto;
     flex-wrap: nowrap;
     padding-bottom: 4px;
+    gap: 4px;
+  }
+  .site-header nav .ghost,
+  .site-header nav .primary {
+    font-size: 12px;
+    padding: 7px 10px;
+    white-space: nowrap;
+    flex-shrink: 0;
   }
   .site-header nav::-webkit-scrollbar { height: 3px; }
   .site-header nav::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
@@ -905,6 +914,123 @@ a { color: inherit; text-decoration: none; }
 .grade-c { background: #f59e0b; color: #0b0e17; }
 .grade-d { background: #6b7280; color: #fff; }
 
+/* ---------- rank medals (top sort) ---------- */
+.rank-medal {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 2;
+  font-size: 28px;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.5));
+  line-height: 1;
+}
+
+/* ---------- achievement badges (feed cards) ---------- */
+.achiev-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.achiev {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 8px;
+  font-size: 10px;
+  font-weight: 700;
+  border-radius: 999px;
+  background: rgba(255, 184, 107, 0.12);
+  color: var(--accent-2);
+  border: 1px solid rgba(255, 184, 107, 0.25);
+  white-space: nowrap;
+}
+
+/* ---------- like button burst animation ---------- */
+.like-burst {
+  animation: like-pop 0.45s ease;
+}
+@keyframes like-pop {
+  0%   { transform: scale(1); }
+  30%  { transform: scale(1.3); }
+  50%  { transform: scale(0.9); }
+  70%  { transform: scale(1.1); }
+  100% { transform: scale(1); }
+}
+.like-burst .heart::after {
+  content: '♥';
+  position: absolute;
+  font-size: 18px;
+  color: var(--heart);
+  animation: heart-float 0.6s ease forwards;
+  pointer-events: none;
+}
+@keyframes heart-float {
+  0%   { opacity: 1; transform: translateY(0) scale(1); }
+  100% { opacity: 0; transform: translateY(-20px) scale(1.5); }
+}
+
+/* ---------- detail: achievements section ---------- */
+.achievements-section h2 {
+  font-size: 15px;
+}
+.achievements-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 10px;
+}
+.achievement-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: rgba(255, 184, 107, 0.06);
+  border: 1px solid rgba(255, 184, 107, 0.15);
+}
+.achievement-icon {
+  font-size: 24px;
+  flex-shrink: 0;
+}
+.achievement-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.achievement-title {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--text);
+}
+.achievement-desc {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+/* ---------- detail: XP bar (AI score) ---------- */
+.ai-score-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent-2);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 2px;
+}
+.xp-bar {
+  height: 8px;
+  background: var(--bg-elev);
+  border-radius: 999px;
+  overflow: hidden;
+  margin-top: 6px;
+}
+.xp-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #7c5cff, #42d6a4);
+  transition: width 0.8s ease;
+}
+
 /* ---------- staggered card entrance ---------- */
 .feed-loaded .card {
   animation: card-stagger-in 0.4s ease both;
@@ -989,7 +1115,10 @@ a { color: inherit; text-decoration: none; }
   .new-badge, .trending-badge { font-size: 9px; padding: 2px 6px; }
   .gallery-badge { font-size: 9px; padding: 3px 7px; }
   .grade-badge { width: 18px; height: 18px; font-size: 9px; border-radius: 4px; }
+  .rank-medal { font-size: 22px; top: 8px; left: 8px; }
+  .achiev { font-size: 9px; padding: 2px 6px; }
   .placeholder-initials { font-size: 28px; }
+  .achievements-grid { grid-template-columns: 1fr; }
 }
 
 /* ---------- detail page ---------- */

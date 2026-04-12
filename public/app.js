@@ -124,6 +124,9 @@
       btn.classList.add('liked');
       btn.setAttribute('aria-pressed', 'true');
       countEl.textContent = current + 1;
+      // Heart burst animation
+      btn.classList.add('like-burst');
+      btn.addEventListener('animationend', () => btn.classList.remove('like-burst'), { once: true });
     }
     saveLiked();
 
@@ -268,14 +271,32 @@
       return Number.isFinite(ts) && Date.now() - ts < NEW_WINDOW_MS;
     }
 
+    // Achievement badges — earned based on real metrics
+    function achievementBadges(item) {
+      const badges = [];
+      if (item.time_saved_per_week >= 10) badges.push('<span class="achiev" title="Saves 10+ hours/week">⚡ Time Saver</span>');
+      if (item.runs_completed >= 500) badges.push('<span class="achiev" title="500+ runs completed">🏆 Powerhouse</span>');
+      if (item.likes >= 10) badges.push('<span class="achiev" title="10+ community likes">❤️ Fan Favorite</span>');
+      if (item.approx_monthly_tokens >= 1000000) badges.push('<span class="achiev" title="1M+ tokens/month">🧠 Token Beast</span>');
+      if (item.ai_grade === 'S' || item.ai_grade === 'A') badges.push('<span class="achiev" title="Top AI score">✨ Elite</span>');
+      return badges.slice(0, 2).join('');
+    }
+
     function cardHtml(item, extraClass = '') {
       const fresh = isNew(item);
       const cls = ['card'];
       if (fresh) cls.push('is-new');
       if (extraClass) cls.push(extraClass);
-      const badge = fresh
-        ? `<span class="new-badge">New</span>`
-        : (extraClass.includes('is-trending') ? `<span class="trending-badge">🔥 Trending</span>` : '');
+      // Top-left badge: rank medal > new > trending (only one shown)
+      let badge = '';
+      if (item._rank && item._rank <= 3) {
+        const medals = ['🥇', '🥈', '🥉'];
+        badge = `<span class="rank-medal">${medals[item._rank - 1]}</span>`;
+      } else if (fresh) {
+        badge = `<span class="new-badge">New</span>`;
+      } else if (extraClass.includes('is-trending')) {
+        badge = `<span class="trending-badge">🔥 Trending</span>`;
+      }
       // Gallery indicator — show image count if agent has multiple images
       const gallery = Array.isArray(item.gallery) ? item.gallery : [];
       const galleryCount = (item.image_url ? 1 : 0) + gallery.length;
@@ -284,6 +305,7 @@
       // AI grade badge — show letter grade when scored
       const gradeBadge = item.ai_grade
         ? `<span class="grade-badge grade-${item.ai_grade.toLowerCase()}">${escapeHtml(item.ai_grade)}</span>` : '';
+      const achievs = achievementBadges(item);
       return `
         <div class="${cls.join(' ')}" data-href="/use-cases/${item.id}" data-id="${item.id}">
           ${badge}${galleryBadge}
@@ -291,6 +313,7 @@
           <div class="card-body">
             <h3 class="card-title">${escapeHtml(item.title)}</h3>
             <p class="card-pitch">${escapeHtml(item.pitch || item.description || '')}</p>
+            ${achievs ? `<div class="achiev-row">${achievs}</div>` : ''}
             <div class="chip-row">${chipRow(item)}</div>
             <div class="card-foot">
               <span class="card-author">${handleBlock(item)}${verifiedBadge(item)}${gradeBadge}</span>
@@ -361,6 +384,10 @@
         const trendingIds = new Set();
         if (state.sort === 'trending' && items.length > 1) {
           items.slice(0, 3).forEach((it) => trendingIds.add(it.id));
+        }
+        // Assign rank positions for "top" sort (medals on top 3)
+        if (state.sort === 'top' && items.length > 1) {
+          items.forEach((it, idx) => { it._rank = idx + 1; });
         }
         feedEl.innerHTML = items.map((item, i) => {
           const extra = trendingIds.has(item.id) ? 'is-trending' : '';
@@ -914,19 +941,21 @@
       const rankingsHref = item.category
         ? `/rankings?category=${encodeURIComponent(item.category)}`
         : '/rankings';
+      const gradeLabels = { S: 'Legendary', A: 'Elite', B: 'Solid', C: 'Rising', D: 'Starter' };
       const aiCard = hasAiScore ? `
         <div class="side-card ai-card">
-          <h3>AI Score</h3>
+          <h3>⚔️ Agent Power Level</h3>
           <div class="ai-card-row">
             <span class="rank-grade grade-${item.ai_grade || 'C'}">${escapeHtml(item.ai_grade || '—')}</span>
             <div>
-              <div class="ai-score-num">${item.ai_score}<span class="ai-score-unit">/100</span></div>
-              <div class="score-bar"><div class="score-fill" style="width: ${item.ai_score}%"></div></div>
+              <div class="ai-score-label">${escapeHtml(gradeLabels[item.ai_grade] || 'Unranked')}</div>
+              <div class="ai-score-num">${item.ai_score}<span class="ai-score-unit"> XP</span></div>
+              <div class="xp-bar"><div class="xp-fill" style="width: ${item.ai_score}%"></div></div>
             </div>
           </div>
-          ${item.featured && item.featured_reason ? `<p class="ai-featured muted">★ ${escapeHtml(item.featured_reason)}</p>` : ''}
+          ${item.featured && item.featured_reason ? `<p class="ai-featured">⭐ ${escapeHtml(item.featured_reason)}</p>` : ''}
           <a class="ai-rankings-link" href="${rankingsHref}">
-            See ${item.category ? escapeHtml(item.category) + ' ' : ''}rankings ↗
+            View leaderboard ↗
           </a>
         </div>` : '';
 
@@ -1106,8 +1135,38 @@
       // long scrollable column so the detail page reads like an article,
       // not a SaaS dashboard. The image_prompt section is gone entirely —
       // the prompt is stored for re-gen but not surfaced to visitors.
+      // Detail-page achievements — more verbose than card badges
+      const detailAchievements = [];
+      if (item.time_saved_per_week >= 10) detailAchievements.push({ icon: '⚡', title: 'Time Saver', desc: `Saves ${item.time_saved_per_week}h+ every week` });
+      if (item.runs_completed >= 500) detailAchievements.push({ icon: '🏆', title: 'Powerhouse', desc: `${fmtNumber(item.runs_completed)} runs completed` });
+      if (item.likes >= 10) detailAchievements.push({ icon: '❤️', title: 'Fan Favorite', desc: `${item.likes} community likes` });
+      if (item.approx_monthly_tokens >= 1000000) detailAchievements.push({ icon: '🧠', title: 'Token Beast', desc: `${fmtNumber(item.approx_monthly_tokens)} tokens/mo` });
+      if (item.ai_grade === 'S' || item.ai_grade === 'A') detailAchievements.push({ icon: '✨', title: 'Elite Agent', desc: `${item.ai_grade}-tier AI score` });
+      if (item.verified) detailAchievements.push({ icon: '✅', title: 'Verified', desc: 'Builder-verified agent' });
+      if (item.running_since) {
+        const sinceDate = Date.parse(item.running_since);
+        if (Number.isFinite(sinceDate) && Date.now() - sinceDate > 30 * 86400000) {
+          detailAchievements.push({ icon: '🛡️', title: 'Battle Tested', desc: 'Running 30+ days' });
+        }
+      }
+      const achievementsSectionHtml = detailAchievements.length ? `
+          <section class="detail-section achievements-section">
+            <h2>🏅 Achievements</h2>
+            <div class="achievements-grid">
+              ${detailAchievements.map((a) => `
+                <div class="achievement-card">
+                  <span class="achievement-icon">${a.icon}</span>
+                  <div class="achievement-info">
+                    <span class="achievement-title">${escapeHtml(a.title)}</span>
+                    <span class="achievement-desc">${escapeHtml(a.desc)}</span>
+                  </div>
+                </div>`).join('')}
+            </div>
+          </section>` : '';
+
       const overviewPanel = `
         <div class="overview-panel">
+          ${achievementsSectionHtml}
           <section class="detail-section">
             <h2>Brain Analysis</h2>
             <div class="detail-story-wrap">${formatStory(item.story || item.description || '')}</div>
