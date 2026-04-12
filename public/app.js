@@ -230,6 +230,9 @@
       chips.push(['framework', item.agent_framework]);
     }
     if (item.category) chips.push(['category', item.category]);
+    if (item.complexity_tier && item.complexity_tier !== 'beginner') {
+      chips.push(['complexity', humanize(item.complexity_tier)]);
+    }
     if (Array.isArray(item.integrations) && item.integrations[0]) {
       chips.push(['integration', item.integrations[0]]);
     }
@@ -318,9 +321,15 @@
       const galleryCount = (item.image_url ? 1 : 0) + gallery.length;
       const galleryBadge = galleryCount > 1
         ? `<span class="gallery-badge" title="${galleryCount} images">📷 ${galleryCount}</span>` : '';
-      // AI grade badge — show letter grade when scored
-      const gradeBadge = item.ai_grade
-        ? `<span class="grade-badge grade-${item.ai_grade.toLowerCase()}">${escapeHtml(item.ai_grade)}</span>` : '';
+      // AI grade row — prominent display of grade + score between achievements and chips
+      const gradeLabels = { S: 'Legendary', A: 'Elite', B: 'Solid', C: 'Rising', D: 'Starter' };
+      const gradeRow = item.ai_grade
+        ? `<div class="card-grade-row">
+             <span class="grade-badge grade-${item.ai_grade.toLowerCase()}">${escapeHtml(item.ai_grade)}</span>
+             <span class="card-grade-label">${gradeLabels[item.ai_grade] || ''}</span>
+             ${item.ai_score ? `<span class="card-grade-score">${item.ai_score}/100</span>` : ''}
+           </div>`
+        : '';
       const achievs = achievementBadges(item);
       return `
         <div class="${cls.join(' ')}" data-href="/use-cases/${item.id}" data-id="${item.id}">
@@ -330,9 +339,10 @@
             <h3 class="card-title">${escapeHtml(item.title)}</h3>
             <p class="card-pitch">${escapeHtml(item.pitch || item.description || '')}</p>
             ${achievs ? `<div class="achiev-row">${achievs}</div>` : ''}
+            ${gradeRow}
             <div class="chip-row">${chipRow(item)}</div>
             <div class="card-foot">
-              <span class="card-author">${handleBlock(item)}${verifiedBadge(item)}${gradeBadge}</span>
+              <span class="card-author">${handleBlock(item)}${verifiedBadge(item)}</span>
               ${likeBtnHtml(item)}
             </div>
           </div>
@@ -387,12 +397,17 @@
         const res = await fetch('/api/submissions?' + params.toString());
         const items = await res.json();
         if (!Array.isArray(items) || items.length === 0) {
+          const emptyMsgs = {
+            score: 'No scored agents yet — new submissions get AI-graded within 24 hours.',
+            complexity: 'No agents with complexity scores yet.',
+          };
+          const emptyText = state.q || state.category
+            ? 'No matches found. Try a different filter.'
+            : emptyMsgs[state.sort] || 'Nothing here yet.';
           feedEl.innerHTML = `
             <div class="empty">
               <div class="empty-icon">◆</div>
-              <p>${state.q || state.category
-                ? 'No matches found. Try a different filter.'
-                : 'Nothing here yet.'}</p>
+              <p>${emptyText}</p>
               <a class="empty-cta" href="/submit">Be the first to post →</a>
             </div>`;
           return;
@@ -417,8 +432,8 @@
         if (state.sort === 'trending' && items.length > 1) {
           items.slice(0, 3).forEach((it) => trendingIds.add(it.id));
         }
-        // Assign rank positions for "top" sort (medals on top 3)
-        if (state.sort === 'top' && items.length > 1) {
+        // Assign rank positions for ranked sorts (medals on top 3)
+        if (['top', 'score', 'complexity'].includes(state.sort) && items.length > 1) {
           items.forEach((it, idx) => { it._rank = idx + 1; });
         }
         feedEl.innerHTML = items.map((item, i) => {
@@ -1310,8 +1325,15 @@
         highlights.push(`${fmtNumber(item.runs_completed)} runs completed`);
       }
       if (item.ai_grade) {
-        const gradeWord = { S: 'Legendary', A: 'Elite', B: 'Solid' }[item.ai_grade];
-        if (gradeWord) highlights.push(`${gradeWord} (Grade ${escapeHtml(item.ai_grade)})`);
+        const gradeWord = { S: 'Legendary', A: 'Elite', B: 'Solid', C: 'Rising', D: 'Starter' }[item.ai_grade];
+        if (gradeWord) {
+          const scorePart = item.ai_score != null ? ` — ${item.ai_score}/100 AI Score` : '';
+          highlights.push(`${gradeWord} (Grade ${escapeHtml(item.ai_grade)})${scorePart}`);
+        }
+      }
+      if (item.complexity_tier) {
+        const cLabels = { beginner: 'Beginner-friendly', intermediate: 'Intermediate build', advanced: 'Advanced build', expert: 'Expert-level build' };
+        highlights.push(cLabels[item.complexity_tier] || humanize(item.complexity_tier));
       }
       if (item.running_since) {
         const since = Date.parse(item.running_since);
@@ -1412,15 +1434,23 @@
       const heroCtaHtml = heroCtas.length
         ? `<div class="hero-cta-row">${heroCtas.join('')}</div>` : '';
 
-      // Hero metrics strip — pull 2-3 best impact numbers into the hero
+      // Hero metrics strip — lead with AI grade + complexity for instant scan,
+      // then pull impact numbers.
       const heroMetrics = [];
+      if (item.ai_grade) {
+        const gl = { S: 'Legendary', A: 'Elite', B: 'Solid', C: 'Rising', D: 'Starter' };
+        heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val"><span class="grade-inline grade-${item.ai_grade.toLowerCase()}">${escapeHtml(item.ai_grade)}</span>${item.ai_score != null ? ' ' + item.ai_score : ''}</span><span class="hero-metric-lbl">${escapeHtml(gl[item.ai_grade] || 'AI Score')}</span></div>`);
+      }
+      if (item.complexity_tier) {
+        heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${escapeHtml(humanize(item.complexity_tier))}</span><span class="hero-metric-lbl">complexity</span></div>`);
+      }
       if (item.time_saved_per_week) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${item.time_saved_per_week}h</span><span class="hero-metric-lbl">saved / week</span></div>`);
       if (item.runs_completed) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${fmtNumber(item.runs_completed)}</span><span class="hero-metric-lbl">runs</span></div>`);
-      if (item.approx_monthly_tokens) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${fmtNumber(item.approx_monthly_tokens)}</span><span class="hero-metric-lbl">tokens / mo</span></div>`);
-      if (item.hours_used && heroMetrics.length < 3) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${fmtNumber(item.hours_used)}</span><span class="hero-metric-lbl">hours used</span></div>`);
-      if (item.running_since && heroMetrics.length < 3) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${escapeHtml(item.running_since)}</span><span class="hero-metric-lbl">running since</span></div>`);
+      if (item.approx_monthly_tokens && heroMetrics.length < 5) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${fmtNumber(item.approx_monthly_tokens)}</span><span class="hero-metric-lbl">tokens / mo</span></div>`);
+      if (item.hours_used && heroMetrics.length < 5) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${fmtNumber(item.hours_used)}</span><span class="hero-metric-lbl">hours used</span></div>`);
+      if (item.running_since && heroMetrics.length < 5) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${escapeHtml(item.running_since)}</span><span class="hero-metric-lbl">running since</span></div>`);
       const heroMetricsHtml = heroMetrics.length
-        ? `<div class="hero-metrics-strip">${heroMetrics.slice(0, 3).join('')}</div>` : '';
+        ? `<div class="hero-metrics-strip">${heroMetrics.slice(0, 5).join('')}</div>` : '';
 
       root.innerHTML = `
         <a class="back-link" href="/">← Back to feed</a>

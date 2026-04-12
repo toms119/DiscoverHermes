@@ -1163,6 +1163,16 @@ app.get('/api/submissions', (req, res) => {
       // Classic HN-ish hotness: recent likes weigh more than old ones.
       order = `(likes + 1.0) / POW((julianday('now') - julianday(created_at)) * 24 + 2, 1.5) DESC`;
       break;
+    case 'complexity':
+      order = `CASE complexity_tier
+        WHEN 'expert' THEN 4 WHEN 'advanced' THEN 3
+        WHEN 'intermediate' THEN 2 WHEN 'beginner' THEN 1
+        ELSE 0 END DESC, likes DESC, created_at DESC`;
+      break;
+    case 'score':
+      // COALESCE pushes unscored agents to the bottom.
+      order = 'COALESCE(ai_score, -1) DESC, created_at DESC';
+      break;
     case 'new':
     default:
       order = 'created_at DESC';

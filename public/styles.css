@@ -456,7 +456,11 @@ a { color: inherit; text-decoration: none; }
   border-radius: 999px;
   padding: 4px;
   gap: 2px;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
+.tabs::-webkit-scrollbar { display: none; }
 .tab {
   background: transparent;
   color: var(--text-dim);
@@ -468,6 +472,8 @@ a { color: inherit; text-decoration: none; }
   cursor: pointer;
   font-family: inherit;
   transition: color 0.15s ease, background 0.15s ease;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 .tab:hover { color: var(--text); }
 .tab.active {
@@ -658,6 +664,7 @@ a { color: inherit; text-decoration: none; }
 .chip-model  { background: rgba(99,179,237,0.10); color: #90cdf4; border-color: rgba(99,179,237,0.3); }
 .chip-runs   { background: rgba(255,184,107,0.10); color: var(--accent-2); border-color: rgba(255,184,107,0.3); }
 .chip-framework { background: rgba(168,85,247,0.10); color: #c084fc; border-color: rgba(168,85,247,0.3); }
+.chip-complexity { background: rgba(45,212,191,0.12); color: #2dd4bf; border-color: rgba(45,212,191,0.25); }
 
 .chip-row {
   display: flex;
@@ -1034,6 +1041,25 @@ a { color: inherit; text-decoration: none; }
   line-height: 1;
 }
 
+/* ---------- card grade row ---------- */
+.card-grade-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.card-grade-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+}
+.card-grade-score {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-left: auto;
+  opacity: 0.7;
+}
+
 /* ---------- achievement badges (feed cards) ---------- */
 .achiev-row {
   display: flex;
@@ -1394,6 +1420,23 @@ a { color: inherit; text-decoration: none; }
   color: var(--text);
   letter-spacing: -0.02em;
 }
+.grade-inline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  font-size: 15px;
+  font-weight: 800;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+.grade-inline.grade-s { background: rgba(255,215,0,0.2); color: #ffd700; }
+.grade-inline.grade-a { background: rgba(99,179,237,0.2); color: #90cdf4; }
+.grade-inline.grade-b { background: rgba(72,187,120,0.2); color: #68d391; }
+.grade-inline.grade-c { background: rgba(237,137,54,0.2); color: #ed8936; }
+.grade-inline.grade-d { background: rgba(160,160,170,0.2); color: #a0a0aa; }
 .hero-metric-lbl {
   font-size: 11px;
   text-transform: uppercase;
