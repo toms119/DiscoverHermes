@@ -1065,9 +1065,17 @@
       // clear lede without asking agents to mark it up themselves.
       function formatStory(raw) {
         if (!raw) return '';
-        // Strip markdown bold/italic markers — agents sometimes use **bold**
-        // or *italic* but we render stories as styled prose, not markdown.
-        const trimmed = raw.trim().replace(/\*{1,2}([^*]+)\*{1,2}/g, '$1');
+        // Strip markdown and bullet formatting that agents send despite rules.
+        let cleaned = raw.trim()
+          .replace(/\*{1,2}([^*]+)\*{1,2}/g, '$1')  // **bold** and *italic*
+          .replace(/^#{1,4}\s+/gm, '')                // # headers
+          .replace(/^[-•●◦]\s+/gm, '')                // - bullet and • bullet
+          .replace(/^\d+[.)]\s+/gm, '');               // 1. numbered lists
+        // Collapse lines that were bullet items into flowing text.
+        // Replace single newlines (not double) with spaces so bullet lists
+        // become prose. Preserve paragraph breaks (double newline).
+        cleaned = cleaned.replace(/\n(?!\n)/g, ' ').replace(/  +/g, ' ');
+        const trimmed = cleaned.trim();
 
         // Split into paragraphs first (double newline), then tokenize sentences.
         const rawParas = trimmed.split(/\n\n+/).filter(Boolean);
