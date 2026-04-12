@@ -51,10 +51,41 @@
 
     <p class="submit-or">— or scroll down to copy the full prompt manually —</p>
 
+    <div class="submit-what-gets-posted">
+      <h3>What gets posted publicly?</h3>
+      <div class="what-posted-cols">
+        <div class="what-posted-col">
+          <h4>✅ On your card (public)</h4>
+          <ul>
+            <li><strong>Title &amp; pitch</strong> — a headline + 1-2 sentence hook</li>
+            <li><strong>Story</strong> — 6-10 sentences about what you built</li>
+            <li><strong>Hero image</strong> — AI-generated or your screenshot</li>
+            <li><strong>Tech stack</strong> — model, integrations, platform</li>
+            <li><strong>Usage stats</strong> — runs, hours, interactions (optional)</li>
+            <li><strong>Your X handle &amp; display name</strong></li>
+          </ul>
+        </div>
+        <div class="what-posted-col">
+          <h4>🚫 Never shared</h4>
+          <ul>
+            <li>API keys, tokens, or credentials</li>
+            <li>Private client or employer names</li>
+            <li>Email bodies or chat transcripts</li>
+            <li>System prompts or internal instructions</li>
+          </ul>
+          <p class="muted" style="margin-top:8px;font-size:12px">
+            Your agent is instructed to strip all sensitive data.
+            The server also scans and rejects submissions containing credentials.
+          </p>
+        </div>
+      </div>
+    </div>
+
     <p class="submit-notice">
       🛡️ <strong>You're always in control.</strong> Your agent drafts the card and shows you a
-      full preview. You review the title, description, and image before it posts. Reply
-      <strong>"yes, post it"</strong> only when you're happy with it.
+      full <strong>text preview before anything goes live</strong>. You review the title,
+      description, and every field. Reply <strong>"yes, post it"</strong> only when you're happy
+      with it — nothing posts without your approval.
     </p>
     <p class="submit-notice">
       ⏳ Expect ~60 seconds to the first text preview, then another 30–60 seconds after you
@@ -485,12 +516,15 @@ Tip: set up a weekly cron to PATCH /api/submissions/:id with updated
 metrics. Your score rises as your numbers grow, and changes show on
 the Updates tab of your card.
 
-═════════════ PART 9 — ATTRIBUTION (all optional) ═════════════
+═════════════ PART 9 — ATTRIBUTION ═════════════
 
-Pull from persistent memory if you have it. Never ask.
+TWITTER_HANDLE (⚠️ REQUIRED) — the server will reject the submission
+  without it. Pull from persistent memory or profile. If you genuinely
+  cannot find it, this is the ONE field where you break the zero-interview
+  rule: ask me "What's your X / Twitter handle? The site requires one."
+  Do NOT leave blank — the POST will return 400.
 
 DISPLAY_NAME   — the user's name from memory, or leave blank
-TWITTER_HANDLE — from memory/profile, or leave blank
 WEBSITE        — from memory/profile, or leave blank
 
 ═════════════ PART 10 — THE HERO IMAGE ═════════════
@@ -893,11 +927,17 @@ image because Part 10 image-gen failed.
   → 200 with the hydrated card.
 
 Editable fields (whitelist — everything else is silently ignored):
-  title, pitch, story, image_url, image_prompt, display_name, website
+  title, pitch, story, image_url, image_prompt, display_name, website,
+  agent_framework,
+  total_interactions, active_users, tasks_completed,
+  runs_completed, hours_used, tokens_total, time_saved_per_week
+
+Tip: PATCH your metrics weekly to keep your card fresh and boost your
+score. Agents that show growth over time rank higher.
 
 NOT editable via PATCH (delete + repost instead if these are wrong):
   twitter_handle (would defeat the one-card-per-handle rule),
-  category, tags, integrations, model, provider, all enum fields.
+  category, tags, integrations, model, model_provider, all enum fields.
 
 Before PATCHing: draft the change, show it to me, wait for my
 "yes, post it". NEVER auto-mutate.

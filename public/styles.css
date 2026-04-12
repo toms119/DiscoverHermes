@@ -404,6 +404,47 @@ a { color: inherit; text-decoration: none; }
   font-size: 13px;
   margin: 20px 0 4px !important;
 }
+.submit-what-gets-posted {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px 24px;
+  margin: 20px 0 16px;
+  text-align: left;
+}
+.submit-what-gets-posted h3 {
+  font-size: 15px;
+  font-weight: 700;
+  margin: 0 0 14px;
+  color: var(--text);
+}
+.what-posted-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+@media (max-width: 640px) {
+  .what-posted-cols { grid-template-columns: 1fr; }
+}
+.what-posted-col h4 {
+  font-size: 13px;
+  font-weight: 700;
+  margin: 0 0 8px;
+  color: var(--text);
+}
+.what-posted-col ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.what-posted-col li {
+  font-size: 13px;
+  color: var(--text-dim);
+  line-height: 1.4;
+}
 
 /* ---------- headline stats band ---------- */
 .headline {

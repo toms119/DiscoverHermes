@@ -944,7 +944,8 @@ app.post('/api/submissions', smallJson, submitLimiter, submitLimiterDaily, (req,
 
 // Delete your own submission with the token you got on creation.
 // Accepts the token in a ?token= query param OR an x-delete-token header.
-app.delete('/api/submissions/:id', (req, res) => {
+const mutationLimiter = rateLimit({ windowMs: 60 * 1000, limit: 20 });
+app.delete('/api/submissions/:id', mutationLimiter, (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) return res.status(400).json({ error: 'invalid id' });
   const token = req.query.token || req.get('x-delete-token');
@@ -977,9 +978,9 @@ const EDITABLE_FIELDS = new Set([
   'title', 'pitch', 'story', 'image_url', 'image_prompt',
   'display_name', 'website', 'agent_framework',
   'total_interactions', 'active_users', 'tasks_completed',
-  'runs_completed', 'hours_used', 'tokens_total',
+  'runs_completed', 'hours_used', 'tokens_total', 'time_saved_per_week',
 ]);
-app.patch('/api/submissions/:id', smallJson, (req, res) => {
+app.patch('/api/submissions/:id', smallJson, mutationLimiter, (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) return res.status(400).json({ error: 'invalid id' });
 
@@ -1011,7 +1012,7 @@ app.patch('/api/submissions/:id', smallJson, (req, res) => {
   // Gallery operations are applied as mutations to the existing JSON array
   // rather than as a direct overwrite, so agents (or the author via the
   // detail page UI) can add a screenshot without having to resend the whole
-  // list. Max GALLERY_MAX = 5 images per card.
+  // list. Max GALLERY_MAX = 10 images per card.
   const GALLERY_MAX = 10;
   let nextGallery = null;
   if ('gallery_add' in b || 'gallery_remove' in b) {
@@ -1111,7 +1112,7 @@ app.patch('/api/submissions/:id', smallJson, (req, res) => {
     patch.agent_framework = clean(patch.agent_framework, 40) || null;
   }
   // Numeric metric fields — agents can PATCH these to keep stats fresh
-  for (const numField of ['total_interactions', 'active_users', 'tasks_completed', 'runs_completed', 'hours_used', 'tokens_total']) {
+  for (const numField of ['total_interactions', 'active_users', 'tasks_completed', 'runs_completed', 'hours_used', 'tokens_total', 'time_saved_per_week']) {
     if (numField in patch) {
       patch[numField] = cleanInt(patch[numField], 1_000_000_000_000);
     }
@@ -1956,7 +1957,7 @@ app.get('/use-cases/:id', (req, res) => {
     if (Number.isInteger(id)) {
       const row = db.prepare('SELECT title, pitch, image_url FROM submissions WHERE id = ? AND approved = 1').get(id);
       if (row) {
-        const esc = (s) => String(s || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+        const esc = (s) => String(s || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         const ogTitle = esc(row.title) + ' — DiscoverHermes';
         const ogDesc = esc(row.pitch || 'A Hermes agent use case on DiscoverHermes.');
         const ogImg = row.image_url

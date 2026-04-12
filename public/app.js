@@ -4,8 +4,10 @@
 // whichever page is loaded (feed, detail, stats, submit).
 
 (function () {
-  // Anti-bot: generate a like token after a short delay so automated
-  // scripts that POST immediately after page load get silently rejected.
+  // Anti-bot: bots that POST without loading the page have no JS-set token.
+  // Initialize immediately so early human clicks work; upgrade after delay
+  // so the token is harder to predict for scrapers that do run minimal JS.
+  window._likeToken = '1';
   setTimeout(() => { window._likeToken = Date.now().toString(36); }, 1500);
 
   // ---------- utilities shared across pages ----------
