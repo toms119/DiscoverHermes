@@ -1703,6 +1703,7 @@ function maybeSnapshotDailyTotals() {
 // ---------- stats: aggregates for dashboard ----------
 app.get('/api/stats', (_req, res) => {
   maybeSnapshotDailyTotals();
+  maybeRefreshGitHubStats();
   const one = (sql, ...p) => db.prepare(sql).get(...p);
   const many = (sql, ...p) => db.prepare(sql).all(...p);
 
@@ -1851,57 +1852,69 @@ app.get('/api/stats', (_req, res) => {
   });
 });
 
-// ---------- admin: update github stats ----------
-// POST /api/admin/github-stats with x-admin-token
-// Fetches from star-history.com and saves daily snapshot
+// ---------- github stats: auto-refresh daily ----------
+// Shared fetch logic used by both the daily auto-pull and the admin endpoint.
+async function refreshGitHubStats() {
+  const resp = await fetch('https://www.star-history.com/nousresearch/hermes-agent', {
+    headers: { 'User-Agent': 'DiscoverHermes/1.0' },
+  });
+  if (!resp.ok) throw new Error(`star-history returned ${resp.status}`);
+  const html = await resp.text();
+
+  const parseK = (m) => m ? Math.round(parseFloat(m[1]) * 1000) : 0;
+  const starsMatch = html.match(/([\d.]+)k\s*Stars/i);
+  const forksMatch = html.match(/([\d.]+)k\s*Forks/i);
+  const contributorsMatch = html.match(/(\d+)\s*Contributors/i);
+  const rankMatch = html.match(/Global Rank\s*#(\d+)/i) || html.match(/#(\d+)\s*hermes-agent/i);
+  const weeklyStarsMatch = html.match(/New stars\s*\+?([\d.]+k)/i) || html.match(/\+([\d.]+k)\s*stars/i);
+  const pushesMatch = html.match(/(\d+)\s*Pushes/i);
+  const issuesMatch = html.match(/Issues closed\s*(\d+)/i);
+
+  const stats = {
+    stars: parseK(starsMatch),
+    forks: parseK(forksMatch),
+    contributors: contributorsMatch ? parseInt(contributorsMatch[1]) : 0,
+    global_rank: rankMatch ? parseInt(rankMatch[1]) : null,
+    weekly_stars: parseK(weeklyStarsMatch),
+    weekly_pushes: pushesMatch ? parseInt(pushesMatch[1]) : 0,
+    weekly_issues_closed: issuesMatch ? parseInt(issuesMatch[1]) : 0,
+  };
+
+  const today = new Date().toISOString().slice(0, 10);
+  db.prepare(`
+    INSERT OR REPLACE INTO github_stats
+      (date, stars, forks, contributors, global_rank, weekly_stars, weekly_pushes, weekly_issues_closed)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(today, stats.stars, stats.forks, stats.contributors, stats.global_rank,
+         stats.weekly_stars, stats.weekly_pushes, stats.weekly_issues_closed);
+
+  return { date: today, ...stats };
+}
+
+// Lazy daily auto-refresh: on first /api/stats request each day, if today's
+// github_stats row doesn't exist yet, fetch fresh data in the background.
+let _ghRefreshPromise = null;
+function maybeRefreshGitHubStats() {
+  const today = new Date().toISOString().slice(0, 10);
+  const existing = db.prepare('SELECT 1 FROM github_stats WHERE date = ?').get(today);
+  if (existing) return;
+  // Only one in-flight refresh at a time
+  if (_ghRefreshPromise) return;
+  _ghRefreshPromise = refreshGitHubStats()
+    .then((s) => console.log(`[github-stats] auto-refreshed: ${s.stars} stars, #${s.global_rank}`))
+    .catch((err) => console.error('[github-stats] auto-refresh failed:', err.message))
+    .finally(() => { _ghRefreshPromise = null; });
+}
+
+// Admin endpoint: force-refresh (still useful for manual triggers)
 app.post('/api/admin/github-stats', smallJson, async (req, res) => {
   const auth = req.get('x-admin-token') || req.query.token || (req.body && req.body.token);
   if (!ADMIN_TOKEN || auth !== ADMIN_TOKEN) {
     return res.status(401).json({ error: 'unauthorized' });
   }
-
   try {
-    // Fetch star-history page (use global fetch in Node 18+)
-    const resp = await fetch('https://www.star-history.com/nousresearch/hermes-agent', {
-      headers: { 'User-Agent': 'DiscoverHermes/1.0' }
-    });
-    if (!resp.ok) {
-      return res.status(502).json({ error: 'failed to fetch star-history', status: resp.status });
-    }
-    const html = await resp.text();
-
-    // Parse star-history page for stats
-    const parseK = (m) => m ? Math.round(parseFloat(m[1]) * 1000) : 0;
-
-    // Extract stats using regex - patterns match star-history.com page structure
-    // The sidebar shows: "48.2k Stars #421 Global Rank 6.2k Forks 286 Contributors"
-    const starsMatch = html.match(/([\d.]+)k\s*Stars/i);
-    const forksMatch = html.match(/([\d.]+)k\s*Forks/i);
-    const contributorsMatch = html.match(/(\d+)\s*Contributors/i);
-    const rankMatch = html.match(/Global Rank\s*#(\d+)/i) || html.match(/#(\d+)\s*hermes-agent/i);
-    const weeklyStarsMatch = html.match(/New stars\s*\+?([\d.]+k)/i) || html.match(/\+([\d.]+k)\s*stars/i);
-    const pushesMatch = html.match(/(\d+)\s*Pushes/i);
-    const issuesMatch = html.match(/Issues closed\s*(\d+)/i);
-
-    const stats = {
-      stars: parseK(starsMatch),
-      forks: parseK(forksMatch),
-      contributors: contributorsMatch ? parseInt(contributorsMatch[1]) : 0,
-      global_rank: rankMatch ? parseInt(rankMatch[1]) : null,
-      weekly_stars: parseK(weeklyStarsMatch),
-      weekly_pushes: pushesMatch ? parseInt(pushesMatch[1]) : 0,
-      weekly_issues_closed: issuesMatch ? parseInt(issuesMatch[1]) : 0,
-    };
-
-    const today = new Date().toISOString().slice(0, 10);
-    db.prepare(`
-      INSERT OR REPLACE INTO github_stats
-        (date, stars, forks, contributors, global_rank, weekly_stars, weekly_pushes, weekly_issues_closed)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(today, stats.stars, stats.forks, stats.contributors, stats.global_rank,
-           stats.weekly_stars, stats.weekly_pushes, stats.weekly_issues_closed);
-
-    res.json({ ok: true, date: today, ...stats });
+    const stats = await refreshGitHubStats();
+    res.json({ ok: true, ...stats });
   } catch (err) {
     console.error('github-stats error:', err);
     res.status(500).json({ error: 'internal error', message: err.message });
