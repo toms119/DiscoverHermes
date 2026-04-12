@@ -1351,6 +1351,7 @@
                 <div class="ai-score-label">${aiRankStr ? `Ranked ${aiRankStr}` : ''}</div>
               </div>
             </div>
+            ${item.ai_rationale ? `<p class="ai-rationale">${escapeHtml(item.ai_rationale)}</p>` : ''}
             ${item.featured && item.featured_reason ? `<p class="ai-featured">⭐ ${escapeHtml(item.featured_reason)}</p>` : ''}
           </div>` : (item.ai_score_pending ? `
           <div class="score-card ai-card">
@@ -1502,11 +1503,7 @@
         highlights.push(`Saves ${item.time_saved_per_week}h every week`);
       }
       if (item.runs_completed) {
-        highlights.push(`${fmtNumber(item.runs_completed)} runs completed`);
-      }
-      if (item.ai_grade) {
-        const gradeWord = { S: 'Legendary', A: 'Elite', B: 'Solid' }[item.ai_grade];
-        if (gradeWord) highlights.push(`${gradeWord} (Grade ${escapeHtml(item.ai_grade)})`);
+        highlights.push(`${fmtNumber(item.runs_completed)} sessions run`);
       }
       if (item.running_since) {
         const since = Date.parse(item.running_since);
