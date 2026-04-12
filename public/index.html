@@ -30,12 +30,18 @@
       <a class="ghost" href="/rankings">Rankings</a>
       <a class="ghost" href="/stats">Stats</a>
       <a class="ghost" href="https://hermes-agent.nousresearch.com/" target="_blank" rel="noopener">Install Hermes</a>
-      <a class="primary" href="/submit">Showoff your agent</a>
+      <a class="primary" href="/submit"><span class="nav-full">Showoff your agent</span><span class="nav-short">Submit</span></a>
     </nav>
   </header>
 
   <section class="hero">
-    <h1>See what people are building with Hermes.</h1>
+    <h1>See what people are building with <span id="hero-framework" class="hero-cycle">Hermes</span>.</h1>
+  </section>
+
+  <!-- Top Agents spotlight strip -->
+  <section id="spotlight" class="spotlight" style="display: none;">
+    <h2 class="spotlight-title">Top Agents</h2>
+    <div class="spotlight-track" id="spotlight-track"></div>
   </section>
 
   <!-- Featured agents (AI-picked) -->
@@ -46,10 +52,10 @@
 
   <!-- Headline stats band, populated from /api/stats -->
   <section id="headline" class="headline">
-    <div class="headline-stat"><span class="num" data-stat="total_agents">—</span><span class="lbl">agents</span></div>
-    <div class="headline-stat"><span class="num" data-stat="total_tokens">—</span><span class="lbl">tokens processed</span></div>
-    <div class="headline-stat"><span class="num" data-stat="new_this_week">—</span><span class="lbl">new this week</span></div>
-    <div class="headline-stat"><span class="num" data-stat="total_likes">—</span><span class="lbl">total likes</span></div>
+    <div class="headline-stat"><span class="num" data-stat="total_agents">—</span><span class="lbl">agents live</span></div>
+    <div class="headline-stat"><span class="num" data-stat="total_runs">—</span><span class="lbl">runs logged</span></div>
+    <div class="headline-stat"><span class="num" data-stat="new_this_week">—</span><span class="lbl">dropped this week</span></div>
+    <div class="headline-stat"><span class="num" data-stat="total_likes">—</span><span class="lbl">community love</span></div>
   </section>
 
   <!-- Sort tabs + search -->
@@ -67,6 +73,9 @@
     </div>
   </section>
 
+  <!-- Framework pill filters (Hermes, OpenClaw, IronClaw, etc.) -->
+  <section id="framework-filters" class="pill-row" aria-label="Filter by framework" style="display:none"></section>
+
   <!-- Category pill filters, populated from /api/meta -->
   <section id="category-filters" class="pill-row" aria-label="Filter by category"></section>
 
@@ -78,13 +87,14 @@
   </main>
 
   <footer class="site-footer">
-    <span>Built for the Hermes community by <a href="https://x.com/Shaughnessy119" target="_blank" rel="noopener">@Shaughnessy119</a>.</span>
+    <span>Built by <a href="https://x.com/Shaughnessy119" target="_blank" rel="noopener">@Shaughnessy119</a>.</span>
     <span class="donation">
       <span class="donation-label">Solana donations:</span>
       <code>9mhSvoJmtY1u73xKV6tKMPek75iPbaVxG7xW9NJw5mYn</code>
       <button class="copy-btn" data-copy-text="9mhSvoJmtY1u73xKV6tKMPek75iPbaVxG7xW9NJw5mYn" type="button">copy</button>
     </span>
     <a href="/submit">Show off what you built →</a>
+    <a href="https://github.com/toms119/DiscoverHermes" target="_blank" rel="noopener">Contribute on GitHub →</a>
   </footer>
 
   <script src="/app.js"></script>

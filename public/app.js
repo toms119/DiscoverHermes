@@ -124,6 +124,9 @@
       btn.classList.add('liked');
       btn.setAttribute('aria-pressed', 'true');
       countEl.textContent = current + 1;
+      // Heart burst animation
+      btn.classList.add('like-burst');
+      btn.addEventListener('animationend', () => btn.classList.remove('like-burst'), { once: true });
     }
     saveLiked();
 
@@ -167,8 +170,13 @@
       // placeholder instead of a blank box. Embed the placeholder HTML as
       // a data attr so the onerror handler can use it directly.
       const ph = placeholderHtml(item);
+      // Collect all images for hover cycling (primary + gallery)
+      const gallery = Array.isArray(item.gallery) ? item.gallery : [];
+      const allImgs = [item.image_url, ...gallery];
+      const galleryAttr = allImgs.length > 1
+        ? ` data-gallery="${escapeHtml(JSON.stringify(allImgs))}"` : '';
       return `
-        <div class="card-media">
+        <div class="card-media"${galleryAttr}>
           <img src="${escapeHtml(item.image_url)}" alt=""
                loading="lazy" referrerpolicy="no-referrer"
                onerror="this.parentElement.outerHTML=this.dataset.fallback"
@@ -213,20 +221,34 @@
   }
 
   function chipRow(item) {
-    // Only the chips that actually exist — no empty slots.
+    // Prioritize chips that tell the agent's story: category, key integration,
+    // model, then impact metric.  Generic taxonomy (deployment, trigger) is
+    // less interesting for discovery browsing.
     const chips = [];
+    // Show framework chip for non-Hermes agents (Hermes is default, no badge needed)
+    if (item.agent_framework && item.agent_framework.toLowerCase() !== 'hermes') {
+      chips.push(['framework', item.agent_framework]);
+    }
     if (item.category) chips.push(['category', item.category]);
-    if (item.platform) chips.push(['platform', item.platform]);
-    if (item.trigger_type) chips.push(['trigger', item.trigger_type]);
-    if (item.deployment) chips.push(['deployment', item.deployment]);
-    if (item.time_saved_per_week) chips.push(['hours', `${item.time_saved_per_week}h/wk saved`]);
     if (Array.isArray(item.integrations) && item.integrations[0]) {
       chips.push(['integration', item.integrations[0]]);
     }
+    if (item.model) chips.push(['model', item.model]);
+    else if (item.platform) chips.push(['platform', item.platform]);
+    if (item.time_saved_per_week) chips.push(['hours', `${item.time_saved_per_week}h/wk saved`]);
+    else if (item.runs_completed) chips.push(['runs', `${fmtNum(item.runs_completed)} runs`]);
+    if (item.deployment) chips.push(['deployment', item.deployment]);
     return chips
       .slice(0, 4)
       .map(([k, v]) => `<span class="chip chip-${k}">${escapeHtml(v)}</span>`)
       .join('');
+  }
+
+  // Compact number formatter: 1200 → "1.2k", 1500000 → "1.5M"
+  function fmtNum(n) {
+    if (n >= 1e6) return (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
+    if (n >= 1e3) return (n / 1e3).toFixed(1).replace(/\.0$/, '') + 'k';
+    return String(n);
   }
 
   // ==========================================================
@@ -246,6 +268,7 @@
       verified:    false,
       integration: initialParams.get('integration') || '',
       tool:        initialParams.get('tool') || '',
+      framework:   initialParams.get('framework') || '',
     };
     let debounceTimer = null;
 
@@ -258,26 +281,62 @@
       return Number.isFinite(ts) && Date.now() - ts < NEW_WINDOW_MS;
     }
 
+    // Achievement badges — percentile-based, earned from real standing
+    // _likePct / _aiPct are set by loadFeed before rendering (0–100, lower = better)
+    function achievementBadges(item) {
+      const badges = [];
+      // Likes: top 1% → Legend, top 10% → Fan Favorite
+      if (item._likePct != null && item._likePct <= 1) badges.push('<span class="achiev achiev-legendary" title="Top 1% most liked">👑 Legend</span>');
+      else if (item._likePct != null && item._likePct <= 10) badges.push('<span class="achiev" title="Top 10% most liked">❤️ Fan Favorite</span>');
+      // AI score: top 1% → Apex, top 10% → Elite
+      if (item._aiPct != null && item._aiPct <= 1) badges.push('<span class="achiev achiev-legendary" title="Top 1% AI score">💎 Apex Agent</span>');
+      else if (item._aiPct != null && item._aiPct <= 10) badges.push('<span class="achiev" title="Top 10% AI score">✨ Elite</span>');
+      // Absolute metrics (still valuable signals)
+      if (item.time_saved_per_week >= 10) badges.push('<span class="achiev" title="Saves 10+ hours/week">⚡ Time Saver</span>');
+      if (item.runs_completed >= 500) badges.push('<span class="achiev" title="500+ runs completed">🏆 Powerhouse</span>');
+      if (item.approx_monthly_tokens >= 1000000) badges.push('<span class="achiev" title="1M+ tokens/month">🧠 Token Beast</span>');
+      return badges.slice(0, 2).join('');
+    }
+
     function cardHtml(item, extraClass = '') {
       const fresh = isNew(item);
       const cls = ['card'];
       if (fresh) cls.push('is-new');
       if (extraClass) cls.push(extraClass);
-      const badge = fresh ? `<span class="new-badge">New</span>` : '';
+      // Top-left badge: rank medal > new > trending (only one shown)
+      let badge = '';
+      if (item._rank && item._rank <= 3) {
+        const medals = ['🥇', '🥈', '🥉'];
+        badge = `<span class="rank-medal">${medals[item._rank - 1]}</span>`;
+      } else if (fresh) {
+        badge = `<span class="new-badge">New</span>`;
+      } else if (extraClass.includes('is-trending')) {
+        badge = `<span class="trending-badge">🔥 Trending</span>`;
+      }
+      // Gallery indicator — show image count if agent has multiple images
+      const gallery = Array.isArray(item.gallery) ? item.gallery : [];
+      const galleryCount = (item.image_url ? 1 : 0) + gallery.length;
+      const galleryBadge = galleryCount > 1
+        ? `<span class="gallery-badge" title="${galleryCount} images">📷 ${galleryCount}</span>` : '';
+      // AI grade badge — show letter grade when scored
+      const gradeBadge = item.ai_grade
+        ? `<span class="grade-badge grade-${item.ai_grade.toLowerCase()}">${escapeHtml(item.ai_grade)}</span>` : '';
+      const achievs = achievementBadges(item);
       return `
-        <a class="${cls.join(' ')}" href="/use-cases/${item.id}" data-id="${item.id}">
-          ${badge}
+        <div class="${cls.join(' ')}" data-href="/use-cases/${item.id}" data-id="${item.id}">
+          ${badge}${galleryBadge}
           ${mediaBlock(item)}
           <div class="card-body">
-            <h3 class="card-title">${escapeHtml(item.title)}${verifiedBadge(item)}</h3>
+            <h3 class="card-title">${escapeHtml(item.title)}</h3>
             <p class="card-pitch">${escapeHtml(item.pitch || item.description || '')}</p>
+            ${achievs ? `<div class="achiev-row">${achievs}</div>` : ''}
             <div class="chip-row">${chipRow(item)}</div>
             <div class="card-foot">
-              ${handleBlock(item)}
+              <span class="card-author">${handleBlock(item)}${verifiedBadge(item)}${gradeBadge}</span>
               ${likeBtnHtml(item)}
             </div>
           </div>
-        </a>`;
+        </div>`;
     }
 
     // Shows a dismissible pill when the feed is pre-filtered via a chip
@@ -304,7 +363,17 @@
     }
 
     async function loadFeed() {
-      feedEl.innerHTML = '<div class="loading">Loading the feed…</div>';
+      // Skeleton loading cards — shimmer while the API responds
+      feedEl.classList.remove('feed-loaded');
+      feedEl.innerHTML = Array.from({ length: 6 }, () => `
+        <div class="card skeleton">
+          <div class="card-media skeleton-shimmer"></div>
+          <div class="card-body">
+            <div class="skeleton-line" style="width:80%"></div>
+            <div class="skeleton-line" style="width:60%"></div>
+            <div class="skeleton-line short" style="width:40%"></div>
+          </div>
+        </div>`).join('');
       renderFilterBanner();
       const params = new URLSearchParams();
       params.set('sort', state.sort);
@@ -313,21 +382,61 @@
       if (state.verified) params.set('verified', '1');
       if (state.integration) params.set('integration', state.integration);
       if (state.tool) params.set('tool', state.tool);
+      if (state.framework) params.set('agent_framework', state.framework);
       try {
         const res = await fetch('/api/submissions?' + params.toString());
         const items = await res.json();
         if (!Array.isArray(items) || items.length === 0) {
           feedEl.innerHTML = `
             <div class="empty">
-              ${state.q || state.category
-                ? 'No matches. Try a different filter.'
-                : 'Nothing here yet. <a href="/submit" style="color:var(--accent)">Be the first to post →</a>'}
+              <div class="empty-icon">◆</div>
+              <p>${state.q || state.category
+                ? 'No matches found. Try a different filter.'
+                : 'Nothing here yet.'}</p>
+              <a class="empty-cta" href="/submit">Be the first to post →</a>
             </div>`;
           return;
         }
-        feedEl.innerHTML = items.map(cardHtml).join('');
+        // Compute percentiles for achievement badges
+        if (items.length > 1) {
+          const sortedLikes = items.map((it) => it.likes || 0).sort((a, b) => b - a);
+          const sortedAi = items.filter((it) => it.ai_score != null).map((it) => it.ai_score).sort((a, b) => b - a);
+          items.forEach((it) => {
+            // Likes percentile: what % of agents have fewer likes than this one
+            const likesAbove = sortedLikes.filter((l) => l > (it.likes || 0)).length;
+            it._likePct = (likesAbove / items.length) * 100;
+            // AI percentile
+            if (it.ai_score != null && sortedAi.length > 1) {
+              const aiAbove = sortedAi.filter((s) => s > it.ai_score).length;
+              it._aiPct = (aiAbove / sortedAi.length) * 100;
+            }
+          });
+        }
+        // Mark top 3 as trending when viewing the trending sort
+        const trendingIds = new Set();
+        if (state.sort === 'trending' && items.length > 1) {
+          items.slice(0, 3).forEach((it) => trendingIds.add(it.id));
+        }
+        // Assign rank positions for "top" sort (medals on top 3)
+        if (state.sort === 'top' && items.length > 1) {
+          items.forEach((it, idx) => { it._rank = idx + 1; });
+        }
+        feedEl.innerHTML = items.map((item, i) => {
+          const extra = trendingIds.has(item.id) ? 'is-trending' : '';
+          return cardHtml(item, extra).replace('<div class="card', `<div style="--i:${i}" class="card`);
+        }).join('');
+        feedEl.classList.add('feed-loaded');
+        // Store feed IDs for next/prev navigation on detail pages
+        try {
+          sessionStorage.setItem('dh_feed_ids', JSON.stringify(items.map(it => it.id)));
+        } catch { /* quota exceeded — skip */ }
       } catch {
-        feedEl.innerHTML = `<div class="empty">Couldn't load the feed. Refresh to try again.</div>`;
+        feedEl.innerHTML = `
+          <div class="empty">
+            <div class="empty-icon">◆</div>
+            <p>Couldn't load the feed.</p>
+            <button class="empty-cta" onclick="location.reload()">Refresh →</button>
+          </div>`;
       }
     }
 
@@ -339,6 +448,69 @@
       e.stopPropagation();
       toggleLike(Number(btn.dataset.id), btn);
     });
+
+    // Card click — navigate to detail page.
+    // Cards are <div> (not <a>) to avoid invalid nested-anchor HTML which
+    // breaks DOM rendering.  We delegate clicks here instead.
+    feedEl.addEventListener('click', (e) => {
+      // Skip if the click was on an interactive child (link, button)
+      if (e.target.closest('a') || e.target.closest('button')) return;
+      const card = e.target.closest('.card[data-href]');
+      if (card) window.location.href = card.dataset.href;
+    });
+
+    // Hover image cycling — when a card has multiple gallery images,
+    // cycle through them on hover with a crossfade.
+    (function initHoverCycle() {
+      let hoverTimer = null;
+      let hoverIdx = 0;
+      let hoverImgs = null;
+      let hoverMedia = null;
+
+      feedEl.addEventListener('mouseover', (e) => {
+        const media = e.target.closest('.card-media[data-gallery]');
+        if (!media || media === hoverMedia) return;
+        stopCycle();
+        hoverMedia = media;
+        try { hoverImgs = JSON.parse(media.dataset.gallery); } catch { return; }
+        if (!Array.isArray(hoverImgs) || hoverImgs.length < 2) return;
+        hoverIdx = 0;
+        hoverTimer = setInterval(() => {
+          hoverIdx = (hoverIdx + 1) % hoverImgs.length;
+          const img = media.querySelector('img');
+          if (img) {
+            img.style.opacity = '0';
+            setTimeout(() => {
+              img.src = hoverImgs[hoverIdx];
+              img.style.opacity = '1';
+            }, 150);
+          }
+        }, 1200);
+      });
+
+      feedEl.addEventListener('mouseout', (e) => {
+        const media = e.target.closest('.card-media[data-gallery]');
+        if (media === hoverMedia) stopCycle();
+      });
+
+      function stopCycle() {
+        if (hoverTimer) clearInterval(hoverTimer);
+        hoverTimer = null;
+        if (hoverMedia && hoverImgs && hoverImgs.length > 0) {
+          const img = hoverMedia.querySelector('img');
+          if (img) {
+            img.style.opacity = '0';
+            setTimeout(() => {
+              img.src = hoverImgs[0];
+              img.style.opacity = '1';
+            }, 150);
+          }
+        }
+        hoverMedia = null;
+        hoverImgs = null;
+        hoverIdx = 0;
+      }
+    })();
 
     // Sort tabs — only tabs that actually have a data-sort value.
     // The verified toggle shares the .tab class for visual consistency
@@ -460,6 +632,38 @@
       });
     });
 
+    // Framework filter pills — only shown when 2+ frameworks have agents
+    const fwRow = document.getElementById('framework-filters');
+    fetch('/api/meta').then((r) => r.json()).then((meta) => {
+      const fwCounts = Array.isArray(meta.framework_counts) ? meta.framework_counts : [];
+      if (fwCounts.length < 2) {
+        if (fwRow) fwRow.style.display = 'none';
+        return;
+      }
+      if (!fwRow) return;
+      fwRow.style.display = '';
+      const allBtn = document.createElement('button');
+      allBtn.className = 'pill active';
+      allBtn.dataset.framework = '';
+      allBtn.textContent = 'All Frameworks';
+      fwRow.appendChild(allBtn);
+      fwCounts.forEach((fw) => {
+        const btn = document.createElement('button');
+        btn.className = 'pill';
+        btn.dataset.framework = fw.name;
+        btn.innerHTML = `${escapeHtml(fw.name)}<span class="pill-count">${fw.count}</span>`;
+        fwRow.appendChild(btn);
+      });
+      fwRow.addEventListener('click', (e) => {
+        const pill = e.target.closest('.pill');
+        if (!pill) return;
+        fwRow.querySelectorAll('.pill').forEach((p) => p.classList.remove('active'));
+        pill.classList.add('active');
+        state.framework = pill.dataset.framework;
+        loadFeed();
+      });
+    });
+
     // Live polling: every 45s, quietly ask the server for the newest
     // submissions and prepend any we haven't shown yet with a flash-in
     // animation. Only runs in the default (unfiltered, trending) view
@@ -507,6 +711,57 @@
     loadFeed();
     startLivePoll();
     loadFeatured();
+    loadSpotlight();
+
+    // ---------- hero text cycling: Hermes → OpenClaw → IronClaw … ----------
+    const heroFw = document.getElementById('hero-framework');
+    if (heroFw) {
+      const names = ['Hermes', 'OpenClaw', 'IronClaw', 'AI Agents'];
+      let idx = 0;
+      setInterval(() => {
+        heroFw.style.opacity = '0';
+        setTimeout(() => {
+          idx = (idx + 1) % names.length;
+          heroFw.textContent = names[idx];
+          heroFw.style.opacity = '1';
+        }, 400);
+      }, 3000);
+    }
+  }
+
+  // ==========================================================
+  // SPOTLIGHT STRIP (feed page — top agents horizontal scroll)
+  // ==========================================================
+  async function loadSpotlight() {
+    const section = document.getElementById('spotlight');
+    const track = document.getElementById('spotlight-track');
+    if (!section || !track) return;
+    try {
+      const res = await fetch('/api/submissions?sort=top&limit=5');
+      const items = await res.json();
+      if (!Array.isArray(items) || items.length === 0) {
+        section.style.display = 'none';
+        return;
+      }
+      section.style.display = 'block';
+      track.innerHTML = items.map((item) => `
+        <a class="spotlight-card" href="/use-cases/${item.id}">
+          ${item.image_url
+            ? `<img src="${escapeHtml(item.image_url)}" alt="" loading="lazy" referrerpolicy="no-referrer" />`
+            : `<div class="spotlight-placeholder">◆</div>`}
+          <div class="spotlight-info">
+            <span class="spotlight-name">${escapeHtml(item.title)}</span>
+            ${item.category ? `<span class="spotlight-cat">${escapeHtml(item.category)}</span>` : ''}
+            <div class="spotlight-meta">
+              ${item.ai_grade ? `<span class="grade-badge grade-${item.ai_grade.toLowerCase()}">${escapeHtml(item.ai_grade)}</span>` : ''}
+              ${item.likes ? `<span class="spotlight-likes">${item.likes}</span>` : ''}
+            </div>
+          </div>
+        </a>
+      `).join('');
+    } catch {
+      section.style.display = 'none';
+    }
   }
 
   // ==========================================================
@@ -646,13 +901,11 @@
           // Always bold the first sentence.
           boldSet.add(allSentences[0].text);
           if (allSentences.length > 1) {
-            // Bold the highest-scoring remaining sentence.
-            let best = allSentences[1], bestScore = -Infinity;
-            for (let i = 1; i < allSentences.length; i++) {
-              const sc = scoreImportance(allSentences[i].text);
-              if (sc > bestScore) { bestScore = sc; best = allSentences[i]; }
-            }
-            boldSet.add(best.text);
+            // Score all remaining sentences, pick top 2 for 3 total bolded.
+            const scored = allSentences.slice(1).map(s => ({ s, score: scoreImportance(s.text) }));
+            scored.sort((a, b) => b.score - a.score);
+            boldSet.add(scored[0].s.text);
+            if (scored.length > 1) boldSet.add(scored[1].s.text);
           }
         }
 
@@ -858,19 +1111,21 @@
       const rankingsHref = item.category
         ? `/rankings?category=${encodeURIComponent(item.category)}`
         : '/rankings';
+      const gradeLabels = { S: 'Legendary', A: 'Elite', B: 'Solid', C: 'Rising', D: 'Starter' };
       const aiCard = hasAiScore ? `
         <div class="side-card ai-card">
-          <h3>AI Score</h3>
+          <h3>⚔️ Agent Power Level</h3>
           <div class="ai-card-row">
             <span class="rank-grade grade-${item.ai_grade || 'C'}">${escapeHtml(item.ai_grade || '—')}</span>
             <div>
-              <div class="ai-score-num">${item.ai_score}<span class="ai-score-unit">/100</span></div>
-              <div class="score-bar"><div class="score-fill" style="width: ${item.ai_score}%"></div></div>
+              <div class="ai-score-label">${escapeHtml(gradeLabels[item.ai_grade] || 'Unranked')}</div>
+              <div class="ai-score-num">${item.ai_score}<span class="ai-score-unit"> XP</span></div>
+              <div class="xp-bar"><div class="xp-fill" style="width: ${item.ai_score}%"></div></div>
             </div>
           </div>
-          ${item.featured && item.featured_reason ? `<p class="ai-featured muted">★ ${escapeHtml(item.featured_reason)}</p>` : ''}
+          ${item.featured && item.featured_reason ? `<p class="ai-featured">⭐ ${escapeHtml(item.featured_reason)}</p>` : ''}
           <a class="ai-rankings-link" href="${rankingsHref}">
-            See ${item.category ? escapeHtml(item.category) + ' ' : ''}rankings ↗
+            View leaderboard ↗
           </a>
         </div>` : '';
 
@@ -926,10 +1181,10 @@
       // total_agents = all approved submissions (the Likes pool).
       // total_scored = approved submissions with an ai_score (the AI pool).
       const likesRankStr = item.likes_rank != null
-        ? (item.total_agents ? `#${item.likes_rank} of ${item.total_agents}` : `#${item.likes_rank}`)
+        ? `#${item.likes_rank}${item.total_agents != null ? ` of ${item.total_agents}` : ''}`
         : null;
       const aiRankStr = item.ai_rank != null
-        ? (item.total_scored ? `#${item.ai_rank} of ${item.total_scored}` : `#${item.ai_rank}`)
+        ? `#${item.ai_rank}${item.total_scored != null ? ` of ${item.total_scored}` : ''}`
         : null;
       const rankCard = `
         <div class="side-card rank-card">
@@ -944,7 +1199,7 @@
       // Author can add screenshots of the dashboard / terminal / output
       // from the detail page once posted. Stored as a JSON array on the
       // submission; mutated via PATCH gallery_add / gallery_remove.
-      const GALLERY_MAX = 5;
+      const GALLERY_MAX = 10;
       const galleryList = Array.isArray(item.gallery) ? item.gallery : [];
       const isAuthor = !!item.is_author;
       const galleryItemsHtml = galleryList.map((url, idx) => `
@@ -980,10 +1235,10 @@
         : '';
       const gallerySectionHtml = hasGallerySection ? `
         <section class="detail-section gallery-section">
-          <h2>Gallery${galleryList.length ? ` <span class="tab-badge">${galleryList.length}/${GALLERY_MAX}</span>` : ''}</h2>
+          <h2>Gallery${galleryList.length ? ` <span class="tab-badge">${galleryList.length} photo${galleryList.length === 1 ? '' : 's'}</span>` : ''}</h2>
           ${galleryList.length === 0 && isAuthor
             ? `<p class="muted gallery-empty">Show off what you built — upload screenshots of the dashboard, terminal output, Telegram chat, whatever is most visual. Up to ${GALLERY_MAX} images.</p>`
-            : ''}
+            : (isAuthor && galleryList.length < GALLERY_MAX ? `<p class="muted gallery-hint">You can add up to ${GALLERY_MAX - galleryList.length} more image${GALLERY_MAX - galleryList.length === 1 ? '' : 's'}</p>` : '')}
           ${galleryList.length > 0 ? `
           <div class="gallery-carousel">
             <div class="carousel-track">
@@ -1045,15 +1300,85 @@
           </ul>
         </section>`;
 
+      // ---------- "Why this agent?" highlights strip ----------
+      // Only show genuinely impactful metrics — skip generic labels
+      const highlights = [];
+      if (item.time_saved_per_week) {
+        highlights.push(`Saves ${item.time_saved_per_week}h every week`);
+      }
+      if (item.runs_completed) {
+        highlights.push(`${fmtNumber(item.runs_completed)} runs completed`);
+      }
+      if (item.ai_grade) {
+        const gradeWord = { S: 'Legendary', A: 'Elite', B: 'Solid' }[item.ai_grade];
+        if (gradeWord) highlights.push(`${gradeWord} (Grade ${escapeHtml(item.ai_grade)})`);
+      }
+      if (item.running_since) {
+        const since = Date.parse(item.running_since);
+        if (Number.isFinite(since)) {
+          const days = Math.floor((Date.now() - since) / 86400000);
+          if (days > 30) highlights.push(`Running ${days} days`);
+        }
+      }
+      if (item.approx_monthly_tokens >= 100000) {
+        highlights.push(`${fmtNumber(item.approx_monthly_tokens)} tokens/mo`);
+      }
+      const highlightsSectionHtml = highlights.length ? `
+          <section class="detail-section highlights-section">
+            <ul class="highlights-list">
+              ${highlights.slice(0, 3).map(h => `<li class="highlight-item">${h}</li>`).join('')}
+            </ul>
+          </section>` : '';
+
       // ---------- build the main overview panel ----------
       // No more tabs — story + gotchas + gallery + updates all live in one
       // long scrollable column so the detail page reads like an article,
       // not a SaaS dashboard. The image_prompt section is gone entirely —
       // the prompt is stored for re-gen but not surfaced to visitors.
+      // Detail-page achievements — percentile-based from server rankings
+      const detailAchievements = [];
+      // Likes percentile (likes_rank / total_agents)
+      const likesPct = (item.likes_rank && item.total_agents > 1)
+        ? ((item.likes_rank - 1) / item.total_agents) * 100 : null;
+      if (likesPct != null && likesPct <= 1) detailAchievements.push({ icon: '👑', title: 'Legend', desc: `Top 1% most liked (#${item.likes_rank} of ${item.total_agents})`, legendary: true });
+      else if (likesPct != null && likesPct <= 10) detailAchievements.push({ icon: '❤️', title: 'Fan Favorite', desc: `Top 10% most liked (#${item.likes_rank} of ${item.total_agents})` });
+      // AI score percentile (ai_rank / total_scored)
+      const aiPct = (item.ai_rank && item.total_scored > 1)
+        ? ((item.ai_rank - 1) / item.total_scored) * 100 : null;
+      if (aiPct != null && aiPct <= 1) detailAchievements.push({ icon: '💎', title: 'Apex Agent', desc: `Top 1% AI score (#${item.ai_rank} of ${item.total_scored})`, legendary: true });
+      else if (aiPct != null && aiPct <= 10) detailAchievements.push({ icon: '✨', title: 'Elite', desc: `Top 10% AI score (#${item.ai_rank} of ${item.total_scored})` });
+      // Absolute metrics
+      if (item.time_saved_per_week >= 10) detailAchievements.push({ icon: '⚡', title: 'Time Saver', desc: `Saves ${item.time_saved_per_week}h+ every week` });
+      if (item.runs_completed >= 500) detailAchievements.push({ icon: '🏆', title: 'Powerhouse', desc: `${fmtNumber(item.runs_completed)} runs completed` });
+      if (item.approx_monthly_tokens >= 1000000) detailAchievements.push({ icon: '🧠', title: 'Token Beast', desc: `${fmtNumber(item.approx_monthly_tokens)} tokens/mo` });
+      if (item.verified) detailAchievements.push({ icon: '✅', title: 'Verified', desc: 'Builder-verified agent' });
+      if (item.running_since) {
+        const sinceDate = Date.parse(item.running_since);
+        if (Number.isFinite(sinceDate) && Date.now() - sinceDate > 30 * 86400000) {
+          detailAchievements.push({ icon: '🛡️', title: 'Battle Tested', desc: 'Running 30+ days' });
+        }
+      }
+      const achievementsSectionHtml = detailAchievements.length ? `
+          <section class="detail-section achievements-section">
+            <h2>🏅 Achievements</h2>
+            <div class="achievements-grid">
+              ${detailAchievements.map((a) => `
+                <div class="achievement-card${a.legendary ? ' achievement-legendary' : ''}">
+                  <span class="achievement-icon">${a.icon}</span>
+                  <div class="achievement-info">
+                    <span class="achievement-title">${escapeHtml(a.title)}</span>
+                    <span class="achievement-desc">${escapeHtml(a.desc)}</span>
+                  </div>
+                </div>`).join('')}
+            </div>
+          </section>` : '';
+
       const overviewPanel = `
         <div class="overview-panel">
+          ${highlightsSectionHtml}
+          ${achievementsSectionHtml}
           <section class="detail-section">
-            <h2>The story</h2>
+            <h2>Brain Analysis</h2>
             <div class="detail-story-wrap">${formatStory(item.story || item.description || '')}</div>
           </section>
 
@@ -1065,8 +1390,6 @@
             </ul>
           </section>` : ''}
 
-          ${gallerySectionHtml}
-
           <section class="detail-section updates-section">
             <h2>Updates${updateCount ? ` <span class="tab-badge">${updateCount}</span>` : ''}</h2>
             ${renderUpdatesPanel(item)}
@@ -1075,17 +1398,47 @@
           ${commentsSectionHtml}
         </div>`;
 
+      // Hero CTA buttons — prominent links to the agent's website and/or GitHub
+      const heroCtas = [];
+      if (item.website) {
+        heroCtas.push(`<a class="hero-cta hero-cta-primary" href="${escapeHtml(item.website)}" target="_blank" rel="noopener">Visit Agent ↗</a>`);
+      }
+      if (item.github_url) {
+        heroCtas.push(`<a class="hero-cta hero-cta-github" href="${escapeHtml(item.github_url)}" target="_blank" rel="noopener">View on GitHub ↗</a>`);
+      }
+      if (item.source_url && !item.github_url) {
+        heroCtas.push(`<a class="hero-cta hero-cta-github" href="${escapeHtml(item.source_url)}" target="_blank" rel="noopener">View Source ↗</a>`);
+      }
+      const heroCtaHtml = heroCtas.length
+        ? `<div class="hero-cta-row">${heroCtas.join('')}</div>` : '';
+
+      // Hero metrics strip — pull 2-3 best impact numbers into the hero
+      const heroMetrics = [];
+      if (item.time_saved_per_week) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${item.time_saved_per_week}h</span><span class="hero-metric-lbl">saved / week</span></div>`);
+      if (item.runs_completed) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${fmtNumber(item.runs_completed)}</span><span class="hero-metric-lbl">runs</span></div>`);
+      if (item.approx_monthly_tokens) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${fmtNumber(item.approx_monthly_tokens)}</span><span class="hero-metric-lbl">tokens / mo</span></div>`);
+      if (item.hours_used && heroMetrics.length < 3) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${fmtNumber(item.hours_used)}</span><span class="hero-metric-lbl">hours used</span></div>`);
+      if (item.running_since && heroMetrics.length < 3) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${escapeHtml(item.running_since)}</span><span class="hero-metric-lbl">running since</span></div>`);
+      const heroMetricsHtml = heroMetrics.length
+        ? `<div class="hero-metrics-strip">${heroMetrics.slice(0, 3).join('')}</div>` : '';
+
       root.innerHTML = `
+        <a class="back-link" href="/">← Back to feed</a>
         ${authorBanner}
 
         <div class="detail-hero">
           <div class="detail-media">${media}</div>
           <div class="detail-hero-head">
             ${item.category ? `<span class="chip chip-category">${escapeHtml(item.category)}</span>` : ''}
-            <h1>${escapeHtml(item.title)}${verifiedBadge(item)}</h1>
+            <h1>${escapeHtml(item.title)}</h1>
+            ${item.verified ? '<span class="verified-badge detail-verified">Verified</span>' : ''}
             <p class="detail-pitch">${escapeHtml(item.pitch || '')}</p>
+            ${heroCtaHtml}
+            ${heroMetricsHtml}
           </div>
         </div>
+
+        ${gallerySectionHtml}
 
         <div class="detail-layout">
           <aside class="detail-side detail-side-left">
@@ -1257,6 +1610,64 @@
         }, { passive: true });
       }
 
+      // Lightbox — click a gallery image to see it full-size
+      if (carousel) {
+        carousel.addEventListener('click', (e) => {
+          const img = e.target.closest('.carousel-slide img');
+          if (!img) return;
+          const allUrls = Array.from(carousel.querySelectorAll('.carousel-slide img')).map(i => i.src);
+          let lbIdx = allUrls.indexOf(img.src);
+          if (lbIdx === -1) lbIdx = 0;
+
+          const overlay = document.createElement('div');
+          overlay.className = 'lightbox-overlay';
+          const lbImg = document.createElement('img');
+          lbImg.className = 'lightbox-img';
+          lbImg.src = allUrls[lbIdx];
+          lbImg.alt = 'Full size';
+          overlay.appendChild(lbImg);
+
+          if (allUrls.length > 1) {
+            const prevBtn = document.createElement('button');
+            prevBtn.className = 'lightbox-prev';
+            prevBtn.innerHTML = '&#8249;';
+            prevBtn.addEventListener('click', (ev) => {
+              ev.stopPropagation();
+              lbIdx = (lbIdx - 1 + allUrls.length) % allUrls.length;
+              lbImg.src = allUrls[lbIdx];
+            });
+            const nextBtn = document.createElement('button');
+            nextBtn.className = 'lightbox-next';
+            nextBtn.innerHTML = '&#8250;';
+            nextBtn.addEventListener('click', (ev) => {
+              ev.stopPropagation();
+              lbIdx = (lbIdx + 1) % allUrls.length;
+              lbImg.src = allUrls[lbIdx];
+            });
+            overlay.appendChild(prevBtn);
+            overlay.appendChild(nextBtn);
+          }
+
+          const closeBtn = document.createElement('button');
+          closeBtn.className = 'lightbox-close';
+          closeBtn.innerHTML = '&times;';
+          closeBtn.addEventListener('click', (ev) => { ev.stopPropagation(); overlay.remove(); });
+          overlay.appendChild(closeBtn);
+
+          overlay.addEventListener('click', (ev) => {
+            if (ev.target === overlay) overlay.remove();
+          });
+
+          function onKey(ev) {
+            if (ev.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', onKey); }
+            if (ev.key === 'ArrowLeft' && allUrls.length > 1) { lbIdx = (lbIdx - 1 + allUrls.length) % allUrls.length; lbImg.src = allUrls[lbIdx]; }
+            if (ev.key === 'ArrowRight' && allUrls.length > 1) { lbIdx = (lbIdx + 1) % allUrls.length; lbImg.src = allUrls[lbIdx]; }
+          }
+          document.addEventListener('keydown', onKey);
+          document.body.appendChild(overlay);
+        });
+      }
+
       // Post-an-update form (author only).
       const postBtn = root.querySelector('.post-update-btn');
       if (postBtn) {
@@ -1265,11 +1676,11 @@
           const statusEl = root.querySelector('.post-update-status');
           const body = (textarea?.value || '').trim();
           if (!body) {
-            statusEl.textContent = 'write something first';
+            if (statusEl) statusEl.textContent = 'write something first';
             return;
           }
           postBtn.disabled = true;
-          statusEl.textContent = 'posting…';
+          if (statusEl) statusEl.textContent = 'posting…';
           try {
             const res = await fetch(`/api/submissions/${id}/updates`, {
               method: 'POST',
@@ -1280,12 +1691,12 @@
               const { error } = await res.json().catch(() => ({}));
               throw new Error(error || 'post failed');
             }
-            statusEl.textContent = 'posted — pending your approval below.';
+            if (statusEl) statusEl.textContent = 'posted — pending your approval below.';
             textarea.value = '';
             // Re-fetch so the pending list updates.
             setTimeout(() => location.reload(), 600);
           } catch (err) {
-            statusEl.textContent = err.message || 'could not post';
+            if (statusEl) statusEl.textContent = err.message || 'could not post';
             postBtn.disabled = false;
           }
         });
@@ -1399,10 +1810,63 @@
       .then(([item, meta]) => {
         window.__meta = meta;
         render(item);
+        setupDetailNav(id, root);
       })
       .catch(() => {
         root.innerHTML = `<div class="empty">Couldn't load this use case. It may have been removed.</div>`;
       });
+
+    // --- Next / Prev agent navigation ---
+    function setupDetailNav(currentId, rootEl) {
+      let feedIds = [];
+      try {
+        feedIds = JSON.parse(sessionStorage.getItem('dh_feed_ids') || '[]');
+      } catch { /* ignore */ }
+
+      if (feedIds.length === 0) {
+        // Direct link — fetch recent agents to populate nav
+        fetch('/api/submissions?sort=trending&limit=20')
+          .then(r => r.json())
+          .then(items => {
+            if (Array.isArray(items)) {
+              feedIds = items.map(it => it.id);
+              try { sessionStorage.setItem('dh_feed_ids', JSON.stringify(feedIds)); } catch {}
+              renderDetailNav(currentId, feedIds, rootEl);
+            }
+          })
+          .catch(() => {});
+        return;
+      }
+      renderDetailNav(currentId, feedIds, rootEl);
+    }
+
+    let _navKeyHandler = null;
+    function renderDetailNav(currentId, feedIds, rootEl) {
+      const idx = feedIds.indexOf(currentId);
+      if (idx === -1) return;
+      const prevId = idx > 0 ? feedIds[idx - 1] : null;
+      const nextId = idx < feedIds.length - 1 ? feedIds[idx + 1] : null;
+      if (!prevId && !nextId) return;
+
+      const nav = document.createElement('nav');
+      nav.className = 'detail-nav-bar';
+      nav.innerHTML = `
+        ${prevId ? `<a class="detail-nav-btn" href="/use-cases/${prevId}">← Prev</a>` : '<span></span>'}
+        <span class="detail-nav-pos">${idx + 1} of ${feedIds.length}</span>
+        ${nextId ? `<a class="detail-nav-btn" href="/use-cases/${nextId}">Next →</a>` : '<span></span>'}
+      `;
+      rootEl.appendChild(nav);
+
+      // Keyboard navigation (ArrowLeft / ArrowRight)
+      // Remove any previous listener to avoid stacking
+      if (_navKeyHandler) document.removeEventListener('keydown', _navKeyHandler);
+      _navKeyHandler = function (e) {
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+        if (e.key === 'ArrowLeft' && prevId) window.location.href = `/use-cases/${prevId}`;
+        if (e.key === 'ArrowRight' && nextId) window.location.href = `/use-cases/${nextId}`;
+      };
+      document.addEventListener('keydown', _navKeyHandler);
+    }
   }
 
   // ==========================================================
@@ -1518,6 +1982,81 @@
         else if (donutKeys.has(key)) donutChart(canvas, rows);
         else barChart(canvas, rows, horizontalKeys.has(key));
       });
+
+      // GitHub repo stats section
+      const ghSection = document.getElementById('github-stats');
+      if (ghSection && data.github) {
+        const gh = data.github;
+        ghSection.style.display = '';
+        const setText = (id, val) => {
+          const el = document.getElementById(id);
+          if (el && val != null) el.textContent = fmtNumber(val);
+        };
+        setText('gh-stars', gh.stars);
+        setText('gh-forks', gh.forks);
+        setText('gh-contributors', gh.contributors);
+        const rankEl = document.getElementById('gh-rank');
+        if (rankEl && gh.global_rank) rankEl.textContent = '#' + fmtNumber(gh.global_rank);
+
+        // Star history chart
+        const ghHistory = data.github_history;
+        const starsCanvas = document.getElementById('gh-stars-chart');
+        if (starsCanvas && Array.isArray(ghHistory) && ghHistory.length > 0) {
+          new Chart(starsCanvas, {
+            type: 'line',
+            data: {
+              labels: ghHistory.map((r) => r.date),
+              datasets: [{
+                label: 'stars',
+                data: ghHistory.map((r) => r.stars),
+                borderColor: '#ffd166',
+                backgroundColor: 'rgba(255,209,102,0.12)',
+                fill: true,
+                tension: 0.3,
+                pointRadius: 2,
+              }],
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: { legend: { display: false } },
+              scales: {
+                x: { grid: { color: '#1c2030' } },
+                y: { grid: { color: '#1c2030' } },
+              },
+            },
+          });
+        }
+      }
+
+      // Daily framework breakdown — stacked area/bar chart
+      const dfCanvas = document.getElementById('daily-framework-chart');
+      const df = data.daily_framework;
+      if (dfCanvas && df && df.labels && df.labels.length > 0 && df.datasets) {
+        const fwNames = Object.keys(df.datasets);
+        new Chart(dfCanvas, {
+          type: 'bar',
+          data: {
+            labels: df.labels,
+            datasets: fwNames.map((fw, i) => ({
+              label: fw,
+              data: df.datasets[fw],
+              backgroundColor: PALETTE[i % PALETTE.length],
+              borderWidth: 0,
+              borderRadius: 3,
+            })),
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { position: 'bottom' } },
+            scales: {
+              x: { stacked: true, grid: { color: '#1c2030' } },
+              y: { stacked: true, grid: { color: '#1c2030' }, beginAtZero: true },
+            },
+          },
+        });
+      }
     });
   }
 

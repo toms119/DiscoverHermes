@@ -30,7 +30,7 @@
       <a class="ghost" href="/rankings">Rankings</a>
       <a class="ghost active" href="/stats">Stats</a>
       <a class="ghost" href="https://hermes-agent.nousresearch.com/" target="_blank" rel="noopener">Install Hermes</a>
-      <a class="primary" href="/submit">Showoff your agent</a>
+      <a class="primary" href="/submit"><span class="nav-full">Showoff your agent</span><span class="nav-short">Submit</span></a>
     </nav>
   </header>
 
@@ -41,6 +41,12 @@
       <code>/api/stats</code>. Updated in real time as new agents show off.
     </p>
   </section>
+
+  <!-- DiscoverHermes Portal Stats -->
+  <div class="stats-section-header">
+    <h2 class="section-title">DiscoverHermes Portal</h2>
+    <p class="section-subtitle">Aggregate metrics from all agents submitted to the portal</p>
+  </div>
 
   <section id="headline" class="headline">
     <div class="headline-stat"><span class="num" data-stat="total_agents">—</span><span class="lbl">agents</span></div>
@@ -55,9 +61,11 @@
     <div class="stats-card wide"><h3>Total agents on the portal</h3><canvas data-chart="cumulative"></canvas></div>
     <div class="stats-card wide"><h3>Total tokens processed</h3><canvas data-chart="cumulative_tokens"></canvas></div>
     <div class="stats-card wide"><h3>New agents per day</h3><canvas data-chart="daily"></canvas></div>
+    <div class="stats-card wide"><h3>Daily agents by framework</h3><canvas id="daily-framework-chart"></canvas></div>
     <div class="stats-card"><h3>By category</h3><canvas data-chart="by_category"></canvas></div>
     <div class="stats-card"><h3>By model</h3><canvas data-chart="by_model"></canvas></div>
     <div class="stats-card"><h3>By provider</h3><canvas data-chart="by_provider"></canvas></div>
+    <div class="stats-card"><h3>By framework</h3><canvas data-chart="by_framework"></canvas></div>
     <div class="stats-card"><h3>Deployment</h3><canvas data-chart="by_deployment"></canvas></div>
     <div class="stats-card"><h3>Host</h3><canvas data-chart="by_host"></canvas></div>
     <div class="stats-card"><h3>Platforms</h3><canvas data-chart="by_platform"></canvas></div>
@@ -78,14 +86,32 @@
     <div class="stats-card wide"><h3>Top plugins</h3><canvas data-chart="by_plugin"></canvas></div>
   </main>
 
+  <!-- Hermes GitHub Repo — separate from portal metrics -->
+  <section id="github-stats" class="github-stats-section" style="display:none">
+    <div class="stats-section-header">
+      <h2 class="section-title">Hermes Agent — GitHub Repo</h2>
+      <p class="section-subtitle">Live stats from the <a href="https://github.com/NousResearch/hermes-agent" target="_blank" rel="noopener">NousResearch/hermes-agent</a> repository</p>
+    </div>
+    <div class="github-headline">
+      <div class="headline-stat"><span class="num" id="gh-stars">—</span><span class="lbl">stars</span></div>
+      <div class="headline-stat"><span class="num" id="gh-forks">—</span><span class="lbl">forks</span></div>
+      <div class="headline-stat"><span class="num" id="gh-contributors">—</span><span class="lbl">contributors</span></div>
+      <div class="headline-stat"><span class="num" id="gh-rank">—</span><span class="lbl">global rank</span></div>
+    </div>
+    <div class="github-charts">
+      <div class="stats-card wide"><h3>Star history</h3><canvas id="gh-stars-chart"></canvas></div>
+    </div>
+  </section>
+
   <footer class="site-footer">
-    <span>Built for the Hermes community by <a href="https://x.com/Shaughnessy119" target="_blank" rel="noopener">@Shaughnessy119</a>.</span>
+    <span>Built by <a href="https://x.com/Shaughnessy119" target="_blank" rel="noopener">@Shaughnessy119</a>.</span>
     <span class="donation">
       <span class="donation-label">Solana donations:</span>
       <code>9mhSvoJmtY1u73xKV6tKMPek75iPbaVxG7xW9NJw5mYn</code>
       <button class="copy-btn" data-copy-text="9mhSvoJmtY1u73xKV6tKMPek75iPbaVxG7xW9NJw5mYn" type="button">copy</button>
     </span>
     <a href="/">← Back to feed</a>
+    <a href="https://github.com/toms119/DiscoverHermes" target="_blank" rel="noopener">Contribute on GitHub →</a>
   </footer>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>

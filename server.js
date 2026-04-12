@@ -179,6 +179,7 @@ const DESIRED_COLUMNS = {
   featured:              'INTEGER',       // 0/1 — AI pick for homepage
   featured_reason:       'TEXT',          // short explanation (max 200 chars)
   last_reviewed_at:      'TEXT',          // when AI last scored this
+  agent_framework:       'TEXT',          // hermes | openclaw | ironclaw | etc.
 };
 const existingCols = new Set(
   db.prepare(`PRAGMA table_info(submissions)`).all().map((c) => c.name)
@@ -196,6 +197,7 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_submissions_deploy   ON submissions(deployment);
   CREATE INDEX IF NOT EXISTS idx_submissions_featured ON submissions(featured);
   CREATE INDEX IF NOT EXISTS idx_submissions_ai_score ON submissions(ai_score DESC);
+  CREATE INDEX IF NOT EXISTS idx_submissions_framework ON submissions(agent_framework);
 `);
 
 // ---------- daily totals snapshot ----------
@@ -886,6 +888,7 @@ app.post('/api/submissions', smallJson, submitLimiter, submitLimiterDaily, (req,
     display_name:   clean(b.display_name, 60),
     twitter_handle: normalizedHandle,
     website:        clean(b.website, 200),
+    agent_framework: clean(b.agent_framework, 40) || null,
   };
   if (row.website && !isHttpUrl(row.website)) row.website = null;
 
@@ -948,22 +951,23 @@ app.delete('/api/submissions/:id', (req, res) => {
 // letting it mutate would defeat the one-card-per-handle rule.
 const EDITABLE_FIELDS = new Set([
   'title', 'pitch', 'story', 'image_url', 'image_prompt',
-  'display_name', 'website',
+  'display_name', 'website', 'agent_framework',
 ]);
 app.patch('/api/submissions/:id', smallJson, (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) return res.status(400).json({ error: 'invalid id' });
 
-  const token =
-    (req.body && req.body.token) || req.query.token || req.get('x-delete-token');
-  if (!token || typeof token !== 'string') {
-    return res.status(401).json({ error: 'delete token required' });
-  }
-
   const existing = db.prepare('SELECT * FROM submissions WHERE id = ?').get(id);
   if (!existing) return res.status(404).json({ error: 'not found' });
-  if (!verifyDeleteToken(id, token)) {
-    return res.status(403).json({ error: 'invalid delete token' });
+
+  // Auth: delete token (author) OR admin token
+  const token =
+    (req.body && req.body.token) || req.query.token || req.get('x-delete-token');
+  const adminToken = req.get('x-admin-token');
+  const authorizedByDelete = token && verifyDeleteToken(id, token);
+  const authorizedByAdmin = adminToken && adminToken === ADMIN_TOKEN;
+  if (!authorizedByDelete && !authorizedByAdmin) {
+    return res.status(403).json({ error: 'valid delete token or admin token required' });
   }
 
   const b = req.body || {};
@@ -982,7 +986,7 @@ app.patch('/api/submissions/:id', smallJson, (req, res) => {
   // rather than as a direct overwrite, so agents (or the author via the
   // detail page UI) can add a screenshot without having to resend the whole
   // list. Max GALLERY_MAX = 5 images per card.
-  const GALLERY_MAX = 5;
+  const GALLERY_MAX = 10;
   let nextGallery = null;
   if ('gallery_add' in b || 'gallery_remove' in b) {
     const current = parseJson(existing.gallery, []);
@@ -1077,6 +1081,9 @@ app.patch('/api/submissions/:id', smallJson, (req, res) => {
     }
     patch.website = v || null;
   }
+  if ('agent_framework' in patch) {
+    patch.agent_framework = clean(patch.agent_framework, 40) || null;
+  }
 
   // Safety scan across any free-text edits, same as POST.
   const leak = scanForSecrets([
@@ -1129,6 +1136,10 @@ app.get('/api/submissions', (req, res) => {
   if (req.query.tool) {
     where.push(`EXISTS (SELECT 1 FROM json_each(submissions.tools_used) WHERE value = ?)`);
     params.push(String(req.query.tool));
+  }
+  if (req.query.agent_framework) {
+    where.push('agent_framework = ?');
+    params.push(String(req.query.agent_framework));
   }
   // Verified-only toggle on the feed. Accepts the usual truthy strings.
   if (req.query.verified === '1' || req.query.verified === 'true') {
@@ -1484,6 +1495,13 @@ app.get('/api/meta', (_req, res) => {
     complexity_tiers: [...COMPLEXITY_TIERS],
     verify_enabled: VERIFY_ENABLED,
     verify_price_usd: VERIFY_PRICE_USD,
+    // Agent frameworks with counts — for filter pills on the feed
+    framework_counts: db.prepare(
+      `SELECT COALESCE(agent_framework, 'hermes') AS name, COUNT(*) AS count
+       FROM submissions WHERE approved = 1
+       GROUP BY COALESCE(agent_framework, 'hermes')
+       ORDER BY count DESC`
+    ).all(),
   });
 });
 
@@ -1591,6 +1609,31 @@ app.get('/api/stats', (_req, res) => {
      LIMIT 60`
   );
 
+  // Daily submissions broken down by framework — for time-series chart
+  const dailyByFramework = many(
+    `SELECT DATE(created_at) AS date,
+            COALESCE(agent_framework, 'hermes') AS framework,
+            COUNT(*) AS count
+     FROM submissions WHERE approved = 1
+     GROUP BY DATE(created_at), COALESCE(agent_framework, 'hermes')
+     ORDER BY date ASC`
+  );
+  // Pivot into { labels: [...], datasets: { hermes: [...], openclaw: [...] } }
+  const fwDates = [...new Set(dailyByFramework.map(r => r.date))].slice(-30);
+  const fwNames = [...new Set(dailyByFramework.map(r => r.framework))];
+  const fwMap = {};
+  dailyByFramework.forEach(r => {
+    if (!fwMap[r.framework]) fwMap[r.framework] = {};
+    fwMap[r.framework][r.date] = r.count;
+  });
+  const dailyFramework = {
+    labels: fwDates,
+    datasets: Object.fromEntries(fwNames.map(fw => [
+      fw,
+      fwDates.map(d => (fwMap[fw] && fwMap[fw][d]) || 0),
+    ])),
+  };
+
   res.json({
     totals,
     by_category:     groupScalar('category'),
@@ -1608,6 +1651,7 @@ app.get('/api/stats', (_req, res) => {
     by_source:        groupScalar('source_available'),
     by_time_to_build: groupScalar('time_to_build'),
     by_complexity:    groupScalar('complexity_tier'),
+    by_framework:    groupScalar('agent_framework'),
     by_integration:  groupArray('integrations'),
     by_tool:         groupArray('tools_used'),
     by_skill:        groupArray('skills'),
@@ -1617,6 +1661,7 @@ app.get('/api/stats', (_req, res) => {
     daily,
     cumulative,
     cumulative_tokens: cumulativeTokens,
+    daily_framework: dailyFramework,
 
     // GitHub repo stats — latest snapshot from github_stats table
     github: one(`SELECT * FROM github_stats ORDER BY date DESC LIMIT 1`),
@@ -1685,86 +1730,21 @@ app.post('/api/admin/github-stats', smallJson, async (req, res) => {
 // PATCH /api/submissions/:id — edit submission content
 // Uses delete token (author edits own) OR admin token (admin edits any)
 // Whitelisted fields: title, pitch, story, image_url, image_prompt, display_name, website
-app.patch('/api/submissions/:id', smallJson, (req, res) => {
-  const id = Number(req.params.id);
-  if (!Number.isInteger(id)) return res.status(400).json({ error: 'invalid id' });
-
-  const row = db.prepare('SELECT 1 FROM submissions WHERE id = ?').get(id);
-  if (!row) return res.status(404).json({ error: 'not found' });
-
-  // Auth: delete token (author) OR admin token
-  const token = (req.body && req.body.token) || req.get('x-delete-token');
-  const adminToken = req.get('x-admin-token');
-
-  const authorizedByDelete = token && verifyDeleteToken(id, token);
-  const authorizedByAdmin = adminToken && adminToken === ADMIN_TOKEN;
-
-  if (!authorizedByDelete && !authorizedByAdmin) {
-    return res.status(403).json({ error: 'invalid delete token or unauthorized' });
-  }
-
-  const b = req.body || {};
-
-  // Whitelist of editable fields
-  const updates = {};
-  const now = new Date().toISOString();
-
-  if (typeof b.title === 'string' && b.title.trim()) {
-    updates.title = clean(b.title, 120);
-  }
-  if (typeof b.pitch === 'string') {
-    updates.pitch = clean(b.pitch, 500);
-  }
-  if (typeof b.story === 'string') {
-    updates.story = clean(b.story, 5000);
-  }
-  if (typeof b.image_url === 'string') {
-    updates.image_url = clean(b.image_url, 500);
-  }
-  if (typeof b.image_prompt === 'string') {
-    updates.image_prompt = clean(b.image_prompt, 1000);
-  }
-  if (typeof b.display_name === 'string') {
-    updates.display_name = clean(b.display_name, 60);
-  }
-  if (typeof b.website === 'string') {
-    const website = clean(b.website, 200);
-    updates.website = website && isHttpUrl(website) ? website : null;
-  }
-
-  // Always update last_updated_at when editing
-  updates.last_updated_at = now;
-
-  // Scan for secrets in all updated text fields
-  const secret = scanForSecrets(Object.values(updates));
-  if (secret) {
-    return res.status(400).json({ error: `looks like a ${secret}; redact and retry` });
-  }
-
-  if (Object.keys(updates).length === 1 && updates.last_updated_at) {
-    // Only timestamp update, nothing else changed
-    return res.status(400).json({ error: 'no valid fields to update' });
-  }
-
-  const setClauses = Object.keys(updates).map(k => `${k} = ?`).join(', ');
-  const values = Object.keys(updates).map(k => updates[k]);
-
-  db.prepare(`UPDATE submissions SET ${setClauses} WHERE id = ?`).run(...values, id);
-  const updated = db.prepare('SELECT * FROM submissions WHERE id = ?').get(id);
-  res.json(hydrate(updated));
-});
-
 // ---------- admin (token-gated) ----------
 app.post('/api/admin/submissions/:id/approve', smallJson, requireAdmin, (req, res) => {
   const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return res.status(400).json({ error: 'invalid id' });
   const approved = req.body && req.body.approved === false ? 0 : 1;
-  db.prepare('UPDATE submissions SET approved = ? WHERE id = ?').run(approved, id);
+  const info = db.prepare('UPDATE submissions SET approved = ? WHERE id = ?').run(approved, id);
+  if (info.changes === 0) return res.status(404).json({ error: 'not found' });
   res.json({ ok: true });
 });
 
 app.delete('/api/admin/submissions/:id', requireAdmin, (req, res) => {
   const id = Number(req.params.id);
-  db.prepare('DELETE FROM submissions WHERE id = ?').run(id);
+  if (!Number.isInteger(id)) return res.status(400).json({ error: 'invalid id' });
+  const info = db.prepare('DELETE FROM submissions WHERE id = ?').run(id);
+  if (info.changes === 0) return res.status(404).json({ error: 'not found' });
   res.json({ ok: true });
 });
 
@@ -1799,12 +1779,13 @@ app.patch('/api/submissions/:id/score', smallJson, (req, res) => {
     return res.status(400).json({ error: 'ai_score is required (0-100)' });
   }
   
-  db.prepare(`
-    UPDATE submissions 
+  const info = db.prepare(`
+    UPDATE submissions
     SET ai_score = ?, ai_grade = ?, featured = ?, featured_reason = ?, last_reviewed_at = ?
     WHERE id = ?
   `).run(aiScore, aiGrade, featured, featuredReason, now, id);
-  
+  if (info.changes === 0) return res.status(404).json({ error: 'not found' });
+
   const row = db.prepare('SELECT * FROM submissions WHERE id = ?').get(id);
   res.json(hydrate(row));
 });
@@ -1894,7 +1875,44 @@ app.get('/submit/agent', (_req, res) => {
 app.get('/submit', serveHtml('submit.html'));
 app.get('/stats', serveHtml('stats.html'));
 app.get('/rankings', serveHtml('rankings.html'));
-app.get('/use-cases/:id', serveHtml('use-case.html'));
+// Detail page with dynamic OG meta tags — so sharing an agent link on
+// Twitter/Discord shows that agent's image, title, and pitch instead of
+// generic DiscoverHermes branding.
+app.get('/use-cases/:id', (req, res) => {
+  const fullPath = path.join(__dirname, 'public', 'use-case.html');
+  fs.readFile(fullPath, 'utf8', (err, html) => {
+    if (err) return res.status(500).type('text/plain').send('error loading page');
+
+    let out = html.replace(/(href|src)="\/(styles\.css|app\.js)"/g, `$1="/$2?v=${BUILD_ID}"`);
+
+    // Look up the submission to inject its metadata into OG tags.
+    const id = Number(req.params.id);
+    if (Number.isInteger(id)) {
+      const row = db.prepare('SELECT title, pitch, image_url FROM submissions WHERE id = ? AND approved = 1').get(id);
+      if (row) {
+        const esc = (s) => String(s || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+        const ogTitle = esc(row.title) + ' — DiscoverHermes';
+        const ogDesc = esc(row.pitch || 'A Hermes agent use case on DiscoverHermes.');
+        const ogImg = row.image_url
+          ? (row.image_url.startsWith('/') ? `${PUBLIC_URL}${row.image_url}` : row.image_url)
+          : `${PUBLIC_URL}/og-image.svg`;
+
+        out = out
+          .replace(/<title>[^<]*<\/title>/, `<title>${ogTitle}</title>`)
+          .replace(/(<meta\s+name="description"\s+content=")[^"]*"/,  `$1${ogDesc}"`)
+          .replace(/(<meta\s+property="og:title"\s+content=")[^"]*"/,  `$1${ogTitle}"`)
+          .replace(/(<meta\s+property="og:description"\s+content=")[^"]*"/,  `$1${ogDesc}"`)
+          .replace(/(<meta\s+property="og:image"\s+content=")[^"]*"/,  `$1${ogImg}"`)
+          .replace(/(<meta\s+name="twitter:title"\s+content=")[^"]*"/,  `$1${ogTitle}"`)
+          .replace(/(<meta\s+name="twitter:description"\s+content=")[^"]*"/,  `$1${ogDesc}"`)
+          .replace(/(<meta\s+name="twitter:image"\s+content=")[^"]*"/,  `$1${ogImg}"`);
+      }
+    }
+
+    res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+    res.type('html').send(out);
+  });
+});
 
 // Graceful shutdown for Railway / container environments
 // Ensures SQLite WAL is checkpointed before exit
