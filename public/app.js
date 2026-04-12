@@ -1351,7 +1351,6 @@
                 <div class="ai-score-label">${aiRankStr ? `Ranked ${aiRankStr}` : ''}</div>
               </div>
             </div>
-            ${item.ai_rationale ? `<p class="ai-rationale">${escapeHtml(item.ai_rationale)}</p>` : ''}
             ${item.featured && item.featured_reason ? `<p class="ai-featured">⭐ ${escapeHtml(item.featured_reason)}</p>` : ''}
           </div>` : (item.ai_score_pending ? `
           <div class="score-card ai-card">
@@ -1588,6 +1587,12 @@
           </section>
 
           ${commentsSectionHtml}
+
+          ${item.ai_rationale ? `
+          <section class="detail-section ai-breakdown-section">
+            <h2>AI Score Breakdown</h2>
+            <p class="ai-breakdown-text">${escapeHtml(item.ai_rationale)}</p>
+          </section>` : ''}
         </div>`;
 
       // Hero CTA buttons — prominent links to the agent's website and/or GitHub
