@@ -38,6 +38,12 @@
     <h1>See what people are building with Hermes.</h1>
   </section>
 
+  <!-- Top Agents spotlight strip -->
+  <section id="spotlight" class="spotlight" style="display: none;">
+    <h2 class="spotlight-title">Top Agents</h2>
+    <div class="spotlight-track" id="spotlight-track"></div>
+  </section>
+
   <!-- Featured agents (AI-picked) -->
   <section id="featured" class="featured" style="display: none;">
     <h2 class="featured-title">★ Featured by AI</h2>
@@ -46,10 +52,10 @@
 
   <!-- Headline stats band, populated from /api/stats -->
   <section id="headline" class="headline">
-    <div class="headline-stat"><span class="num" data-stat="total_agents">—</span><span class="lbl">🤖 agents live</span></div>
-    <div class="headline-stat"><span class="num" data-stat="total_tokens">—</span><span class="lbl">🧠 tokens crunched</span></div>
-    <div class="headline-stat"><span class="num" data-stat="new_this_week">—</span><span class="lbl">🆕 dropped this week</span></div>
-    <div class="headline-stat"><span class="num" data-stat="total_likes">—</span><span class="lbl">❤️ community love</span></div>
+    <div class="headline-stat"><span class="num" data-stat="total_agents">—</span><span class="lbl">agents live</span></div>
+    <div class="headline-stat"><span class="num" data-stat="total_tokens">—</span><span class="lbl">tokens crunched</span></div>
+    <div class="headline-stat"><span class="num" data-stat="new_this_week">—</span><span class="lbl">dropped this week</span></div>
+    <div class="headline-stat"><span class="num" data-stat="total_likes">—</span><span class="lbl">community love</span></div>
   </section>
 
   <!-- Sort tabs + search -->
@@ -66,6 +72,9 @@
       <input id="search-input" type="search" placeholder="Search agents, models, integrations…" />
     </div>
   </section>
+
+  <!-- Framework pill filters (Hermes, OpenClaw, IronClaw, etc.) -->
+  <section id="framework-filters" class="pill-row" aria-label="Filter by framework" style="display:none"></section>
 
   <!-- Category pill filters, populated from /api/meta -->
   <section id="category-filters" class="pill-row" aria-label="Filter by category"></section>

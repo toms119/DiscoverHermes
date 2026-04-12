@@ -170,8 +170,13 @@
       // placeholder instead of a blank box. Embed the placeholder HTML as
       // a data attr so the onerror handler can use it directly.
       const ph = placeholderHtml(item);
+      // Collect all images for hover cycling (primary + gallery)
+      const gallery = Array.isArray(item.gallery) ? item.gallery : [];
+      const allImgs = [item.image_url, ...gallery];
+      const galleryAttr = allImgs.length > 1
+        ? ` data-gallery="${escapeHtml(JSON.stringify(allImgs))}"` : '';
       return `
-        <div class="card-media">
+        <div class="card-media"${galleryAttr}>
           <img src="${escapeHtml(item.image_url)}" alt=""
                loading="lazy" referrerpolicy="no-referrer"
                onerror="this.parentElement.outerHTML=this.dataset.fallback"
@@ -220,6 +225,10 @@
     // model, then impact metric.  Generic taxonomy (deployment, trigger) is
     // less interesting for discovery browsing.
     const chips = [];
+    // Show framework chip for non-Hermes agents (Hermes is default, no badge needed)
+    if (item.agent_framework && item.agent_framework.toLowerCase() !== 'hermes') {
+      chips.push(['framework', item.agent_framework]);
+    }
     if (item.category) chips.push(['category', item.category]);
     if (Array.isArray(item.integrations) && item.integrations[0]) {
       chips.push(['integration', item.integrations[0]]);
@@ -259,6 +268,7 @@
       verified:    false,
       integration: initialParams.get('integration') || '',
       tool:        initialParams.get('tool') || '',
+      framework:   initialParams.get('framework') || '',
     };
     let debounceTimer = null;
 
@@ -372,6 +382,7 @@
       if (state.verified) params.set('verified', '1');
       if (state.integration) params.set('integration', state.integration);
       if (state.tool) params.set('tool', state.tool);
+      if (state.framework) params.set('agent_framework', state.framework);
       try {
         const res = await fetch('/api/submissions?' + params.toString());
         const items = await res.json();
@@ -415,6 +426,10 @@
           return cardHtml(item, extra).replace('<div class="card', `<div style="--i:${i}" class="card`);
         }).join('');
         feedEl.classList.add('feed-loaded');
+        // Store feed IDs for next/prev navigation on detail pages
+        try {
+          sessionStorage.setItem('dh_feed_ids', JSON.stringify(items.map(it => it.id)));
+        } catch { /* quota exceeded — skip */ }
       } catch {
         feedEl.innerHTML = `
           <div class="empty">
@@ -443,6 +458,59 @@
       const card = e.target.closest('.card[data-href]');
       if (card) window.location.href = card.dataset.href;
     });
+
+    // Hover image cycling — when a card has multiple gallery images,
+    // cycle through them on hover with a crossfade.
+    (function initHoverCycle() {
+      let hoverTimer = null;
+      let hoverIdx = 0;
+      let hoverImgs = null;
+      let hoverMedia = null;
+
+      feedEl.addEventListener('mouseover', (e) => {
+        const media = e.target.closest('.card-media[data-gallery]');
+        if (!media || media === hoverMedia) return;
+        stopCycle();
+        hoverMedia = media;
+        try { hoverImgs = JSON.parse(media.dataset.gallery); } catch { return; }
+        if (!Array.isArray(hoverImgs) || hoverImgs.length < 2) return;
+        hoverIdx = 0;
+        hoverTimer = setInterval(() => {
+          hoverIdx = (hoverIdx + 1) % hoverImgs.length;
+          const img = media.querySelector('img');
+          if (img) {
+            img.style.opacity = '0';
+            setTimeout(() => {
+              img.src = hoverImgs[hoverIdx];
+              img.style.opacity = '1';
+            }, 150);
+          }
+        }, 1200);
+      });
+
+      feedEl.addEventListener('mouseout', (e) => {
+        const media = e.target.closest('.card-media[data-gallery]');
+        if (media === hoverMedia) stopCycle();
+      });
+
+      function stopCycle() {
+        if (hoverTimer) clearInterval(hoverTimer);
+        hoverTimer = null;
+        if (hoverMedia && hoverImgs && hoverImgs.length > 0) {
+          const img = hoverMedia.querySelector('img');
+          if (img) {
+            img.style.opacity = '0';
+            setTimeout(() => {
+              img.src = hoverImgs[0];
+              img.style.opacity = '1';
+            }, 150);
+          }
+        }
+        hoverMedia = null;
+        hoverImgs = null;
+        hoverIdx = 0;
+      }
+    })();
 
     // Sort tabs — only tabs that actually have a data-sort value.
     // The verified toggle shares the .tab class for visual consistency
@@ -564,6 +632,38 @@
       });
     });
 
+    // Framework filter pills — only shown when 2+ frameworks have agents
+    const fwRow = document.getElementById('framework-filters');
+    fetch('/api/meta').then((r) => r.json()).then((meta) => {
+      const fwCounts = Array.isArray(meta.framework_counts) ? meta.framework_counts : [];
+      if (fwCounts.length < 2) {
+        if (fwRow) fwRow.style.display = 'none';
+        return;
+      }
+      if (!fwRow) return;
+      fwRow.style.display = '';
+      const allBtn = document.createElement('button');
+      allBtn.className = 'pill active';
+      allBtn.dataset.framework = '';
+      allBtn.textContent = 'All Frameworks';
+      fwRow.appendChild(allBtn);
+      fwCounts.forEach((fw) => {
+        const btn = document.createElement('button');
+        btn.className = 'pill';
+        btn.dataset.framework = fw.name;
+        btn.innerHTML = `${escapeHtml(fw.name)}<span class="pill-count">${fw.count}</span>`;
+        fwRow.appendChild(btn);
+      });
+      fwRow.addEventListener('click', (e) => {
+        const pill = e.target.closest('.pill');
+        if (!pill) return;
+        fwRow.querySelectorAll('.pill').forEach((p) => p.classList.remove('active'));
+        pill.classList.add('active');
+        state.framework = pill.dataset.framework;
+        loadFeed();
+      });
+    });
+
     // Live polling: every 45s, quietly ask the server for the newest
     // submissions and prepend any we haven't shown yet with a flash-in
     // animation. Only runs in the default (unfiltered, trending) view
@@ -611,6 +711,42 @@
     loadFeed();
     startLivePoll();
     loadFeatured();
+    loadSpotlight();
+  }
+
+  // ==========================================================
+  // SPOTLIGHT STRIP (feed page — top agents horizontal scroll)
+  // ==========================================================
+  async function loadSpotlight() {
+    const section = document.getElementById('spotlight');
+    const track = document.getElementById('spotlight-track');
+    if (!section || !track) return;
+    try {
+      const res = await fetch('/api/submissions?sort=top&limit=5');
+      const items = await res.json();
+      if (!Array.isArray(items) || items.length === 0) {
+        section.style.display = 'none';
+        return;
+      }
+      section.style.display = 'block';
+      track.innerHTML = items.map((item) => `
+        <a class="spotlight-card" href="/use-cases/${item.id}">
+          ${item.image_url
+            ? `<img src="${escapeHtml(item.image_url)}" alt="" loading="lazy" referrerpolicy="no-referrer" />`
+            : `<div class="spotlight-placeholder">◆</div>`}
+          <div class="spotlight-info">
+            <span class="spotlight-name">${escapeHtml(item.title)}</span>
+            ${item.category ? `<span class="spotlight-cat">${escapeHtml(item.category)}</span>` : ''}
+            <div class="spotlight-meta">
+              ${item.ai_grade ? `<span class="grade-badge grade-${item.ai_grade.toLowerCase()}">${escapeHtml(item.ai_grade)}</span>` : ''}
+              ${item.likes ? `<span class="spotlight-likes">${item.likes}</span>` : ''}
+            </div>
+          </div>
+        </a>
+      `).join('');
+    } catch {
+      section.style.display = 'none';
+    }
   }
 
   // ==========================================================
@@ -750,13 +886,11 @@
           // Always bold the first sentence.
           boldSet.add(allSentences[0].text);
           if (allSentences.length > 1) {
-            // Bold the highest-scoring remaining sentence.
-            let best = allSentences[1], bestScore = -Infinity;
-            for (let i = 1; i < allSentences.length; i++) {
-              const sc = scoreImportance(allSentences[i].text);
-              if (sc > bestScore) { bestScore = sc; best = allSentences[i]; }
-            }
-            boldSet.add(best.text);
+            // Score all remaining sentences, pick top 2 for 3 total bolded.
+            const scored = allSentences.slice(1).map(s => ({ s, score: scoreImportance(s.text) }));
+            scored.sort((a, b) => b.score - a.score);
+            boldSet.add(scored[0].s.text);
+            if (scored.length > 1) boldSet.add(scored[1].s.text);
           }
         }
 
@@ -1032,10 +1166,10 @@
       // total_agents = all approved submissions (the Likes pool).
       // total_scored = approved submissions with an ai_score (the AI pool).
       const likesRankStr = item.likes_rank != null
-        ? (item.total_agents ? `#${item.likes_rank} of ${item.total_agents}` : `#${item.likes_rank}`)
+        ? `#${item.likes_rank}${item.total_agents != null ? ` of ${item.total_agents}` : ''}`
         : null;
       const aiRankStr = item.ai_rank != null
-        ? (item.total_scored ? `#${item.ai_rank} of ${item.total_scored}` : `#${item.ai_rank}`)
+        ? `#${item.ai_rank}${item.total_scored != null ? ` of ${item.total_scored}` : ''}`
         : null;
       const rankCard = `
         <div class="side-card rank-card">
@@ -1050,7 +1184,7 @@
       // Author can add screenshots of the dashboard / terminal / output
       // from the detail page once posted. Stored as a JSON array on the
       // submission; mutated via PATCH gallery_add / gallery_remove.
-      const GALLERY_MAX = 5;
+      const GALLERY_MAX = 10;
       const galleryList = Array.isArray(item.gallery) ? item.gallery : [];
       const isAuthor = !!item.is_author;
       const galleryItemsHtml = galleryList.map((url, idx) => `
@@ -1151,6 +1285,37 @@
           </ul>
         </section>`;
 
+      // ---------- "Why this agent?" highlights strip ----------
+      // Auto-generated 2-3 bullet points for 10-second differentiation scan
+      const highlights = [];
+      if (item.category && item.time_saved_per_week) {
+        highlights.push(`${escapeHtml(item.category)} agent that saves ${item.time_saved_per_week}h/week`);
+      } else if (item.category) {
+        highlights.push(`${escapeHtml(item.category)} agent`);
+      }
+      if (item.ai_grade && item.runs_completed) {
+        highlights.push(`Grade ${escapeHtml(item.ai_grade)} with ${fmtNumber(item.runs_completed)} runs`);
+      } else if (item.ai_grade) {
+        highlights.push(`AI graded ${escapeHtml(item.ai_grade)}`);
+      } else if (item.runs_completed) {
+        highlights.push(`${fmtNumber(item.runs_completed)} runs completed`);
+      }
+      const integ = Array.isArray(item.integrations) ? item.integrations : [];
+      const autoLabel = humanize(item.automation_level);
+      if (autoLabel && integ.length > 0) {
+        highlights.push(`${autoLabel}, uses ${integ.slice(0, 3).map(escapeHtml).join(' + ')}`);
+      } else if (integ.length > 0) {
+        highlights.push(`Uses ${integ.slice(0, 3).map(escapeHtml).join(', ')}`);
+      } else if (autoLabel) {
+        highlights.push(autoLabel);
+      }
+      const highlightsSectionHtml = highlights.length ? `
+          <section class="detail-section highlights-section">
+            <ul class="highlights-list">
+              ${highlights.slice(0, 3).map(h => `<li class="highlight-item">${h}</li>`).join('')}
+            </ul>
+          </section>` : '';
+
       // ---------- build the main overview panel ----------
       // No more tabs — story + gotchas + gallery + updates all live in one
       // long scrollable column so the detail page reads like an article,
@@ -1196,6 +1361,7 @@
 
       const overviewPanel = `
         <div class="overview-panel">
+          ${highlightsSectionHtml}
           ${achievementsSectionHtml}
           <section class="detail-section">
             <h2>Brain Analysis</h2>
@@ -1571,10 +1737,59 @@
       .then(([item, meta]) => {
         window.__meta = meta;
         render(item);
+        setupDetailNav(id, root);
       })
       .catch(() => {
         root.innerHTML = `<div class="empty">Couldn't load this use case. It may have been removed.</div>`;
       });
+
+    // --- Next / Prev agent navigation ---
+    function setupDetailNav(currentId, rootEl) {
+      let feedIds = [];
+      try {
+        feedIds = JSON.parse(sessionStorage.getItem('dh_feed_ids') || '[]');
+      } catch { /* ignore */ }
+
+      if (feedIds.length === 0) {
+        // Direct link — fetch recent agents to populate nav
+        fetch('/api/submissions?sort=trending&limit=20')
+          .then(r => r.json())
+          .then(items => {
+            if (Array.isArray(items)) {
+              feedIds = items.map(it => it.id);
+              try { sessionStorage.setItem('dh_feed_ids', JSON.stringify(feedIds)); } catch {}
+              renderDetailNav(currentId, feedIds, rootEl);
+            }
+          })
+          .catch(() => {});
+        return;
+      }
+      renderDetailNav(currentId, feedIds, rootEl);
+    }
+
+    function renderDetailNav(currentId, feedIds, rootEl) {
+      const idx = feedIds.indexOf(currentId);
+      if (idx === -1) return;
+      const prevId = idx > 0 ? feedIds[idx - 1] : null;
+      const nextId = idx < feedIds.length - 1 ? feedIds[idx + 1] : null;
+      if (!prevId && !nextId) return;
+
+      const nav = document.createElement('nav');
+      nav.className = 'detail-nav-bar';
+      nav.innerHTML = `
+        ${prevId ? `<a class="detail-nav-btn" href="/use-cases/${prevId}">← Prev</a>` : '<span></span>'}
+        <span class="detail-nav-pos">${idx + 1} of ${feedIds.length}</span>
+        ${nextId ? `<a class="detail-nav-btn" href="/use-cases/${nextId}">Next →</a>` : '<span></span>'}
+      `;
+      rootEl.appendChild(nav);
+
+      // Keyboard navigation (ArrowLeft / ArrowRight)
+      document.addEventListener('keydown', function navKey(e) {
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+        if (e.key === 'ArrowLeft' && prevId) window.location.href = `/use-cases/${prevId}`;
+        if (e.key === 'ArrowRight' && nextId) window.location.href = `/use-cases/${nextId}`;
+      });
+    }
   }
 
   // ==========================================================
@@ -1735,6 +1950,35 @@
             },
           });
         }
+      }
+
+      // Daily framework breakdown — stacked area/bar chart
+      const dfCanvas = document.getElementById('daily-framework-chart');
+      const df = data.daily_framework;
+      if (dfCanvas && df && df.labels && df.labels.length > 0 && df.datasets) {
+        const fwNames = Object.keys(df.datasets);
+        new Chart(dfCanvas, {
+          type: 'bar',
+          data: {
+            labels: df.labels,
+            datasets: fwNames.map((fw, i) => ({
+              label: fw,
+              data: df.datasets[fw],
+              backgroundColor: PALETTE[i % PALETTE.length],
+              borderWidth: 0,
+              borderRadius: 3,
+            })),
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { position: 'bottom' } },
+            scales: {
+              x: { stacked: true, grid: { color: '#1c2030' } },
+              y: { stacked: true, grid: { color: '#1c2030' }, beginAtZero: true },
+            },
+          },
+        });
       }
     });
   }

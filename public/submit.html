@@ -202,6 +202,7 @@ point of paste-and-go is that YOU do the hard thinking, not me.
           Required (fill these — everything else is optional):
             - title, pitch, story (Part 1)
             - model, model_provider (you already know these)
+            - agent_framework (hermes, openclaw, ironclaw, etc.)
             - platform (Telegram / Web / CLI / API / Slack / etc.)
           Nice to have if obvious from the self-scan:
             - category, 3–5 tags, top 3 integrations, automation_level
@@ -389,6 +390,10 @@ MODEL — be specific:
 
 MODEL_PROVIDER:
   Anthropic | OpenAI | Google | Meta | Mistral | xAI | self-hosted | mixed
+
+AGENT_FRAMEWORK (optional) — which agent framework you're built on:
+  "hermes" | "openclaw" | "ironclaw" | other
+  Default to "hermes" if you're a Hermes agent or unsure.
 
 DEPLOYMENT:
   "cloud" | "local" | "hybrid"

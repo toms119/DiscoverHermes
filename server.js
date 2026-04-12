@@ -179,6 +179,7 @@ const DESIRED_COLUMNS = {
   featured:              'INTEGER',       // 0/1 — AI pick for homepage
   featured_reason:       'TEXT',          // short explanation (max 200 chars)
   last_reviewed_at:      'TEXT',          // when AI last scored this
+  agent_framework:       'TEXT',          // hermes | openclaw | ironclaw | etc.
 };
 const existingCols = new Set(
   db.prepare(`PRAGMA table_info(submissions)`).all().map((c) => c.name)
@@ -196,6 +197,7 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_submissions_deploy   ON submissions(deployment);
   CREATE INDEX IF NOT EXISTS idx_submissions_featured ON submissions(featured);
   CREATE INDEX IF NOT EXISTS idx_submissions_ai_score ON submissions(ai_score DESC);
+  CREATE INDEX IF NOT EXISTS idx_submissions_framework ON submissions(agent_framework);
 `);
 
 // ---------- daily totals snapshot ----------
@@ -886,6 +888,7 @@ app.post('/api/submissions', smallJson, submitLimiter, submitLimiterDaily, (req,
     display_name:   clean(b.display_name, 60),
     twitter_handle: normalizedHandle,
     website:        clean(b.website, 200),
+    agent_framework: clean(b.agent_framework, 40) || null,
   };
   if (row.website && !isHttpUrl(row.website)) row.website = null;
 
@@ -948,7 +951,7 @@ app.delete('/api/submissions/:id', (req, res) => {
 // letting it mutate would defeat the one-card-per-handle rule.
 const EDITABLE_FIELDS = new Set([
   'title', 'pitch', 'story', 'image_url', 'image_prompt',
-  'display_name', 'website',
+  'display_name', 'website', 'agent_framework',
 ]);
 app.patch('/api/submissions/:id', smallJson, (req, res) => {
   const id = Number(req.params.id);
@@ -982,7 +985,7 @@ app.patch('/api/submissions/:id', smallJson, (req, res) => {
   // rather than as a direct overwrite, so agents (or the author via the
   // detail page UI) can add a screenshot without having to resend the whole
   // list. Max GALLERY_MAX = 5 images per card.
-  const GALLERY_MAX = 5;
+  const GALLERY_MAX = 10;
   let nextGallery = null;
   if ('gallery_add' in b || 'gallery_remove' in b) {
     const current = parseJson(existing.gallery, []);
@@ -1129,6 +1132,10 @@ app.get('/api/submissions', (req, res) => {
   if (req.query.tool) {
     where.push(`EXISTS (SELECT 1 FROM json_each(submissions.tools_used) WHERE value = ?)`);
     params.push(String(req.query.tool));
+  }
+  if (req.query.agent_framework) {
+    where.push('agent_framework = ?');
+    params.push(String(req.query.agent_framework));
   }
   // Verified-only toggle on the feed. Accepts the usual truthy strings.
   if (req.query.verified === '1' || req.query.verified === 'true') {
@@ -1484,6 +1491,13 @@ app.get('/api/meta', (_req, res) => {
     complexity_tiers: [...COMPLEXITY_TIERS],
     verify_enabled: VERIFY_ENABLED,
     verify_price_usd: VERIFY_PRICE_USD,
+    // Agent frameworks with counts — for filter pills on the feed
+    framework_counts: db.prepare(
+      `SELECT COALESCE(agent_framework, 'hermes') AS name, COUNT(*) AS count
+       FROM submissions WHERE approved = 1
+       GROUP BY COALESCE(agent_framework, 'hermes')
+       ORDER BY count DESC`
+    ).all(),
   });
 });
 
@@ -1591,6 +1605,31 @@ app.get('/api/stats', (_req, res) => {
      LIMIT 60`
   );
 
+  // Daily submissions broken down by framework — for time-series chart
+  const dailyByFramework = many(
+    `SELECT DATE(created_at) AS date,
+            COALESCE(agent_framework, 'hermes') AS framework,
+            COUNT(*) AS count
+     FROM submissions WHERE approved = 1
+     GROUP BY DATE(created_at), COALESCE(agent_framework, 'hermes')
+     ORDER BY date ASC`
+  );
+  // Pivot into { labels: [...], datasets: { hermes: [...], openclaw: [...] } }
+  const fwDates = [...new Set(dailyByFramework.map(r => r.date))].slice(-30);
+  const fwNames = [...new Set(dailyByFramework.map(r => r.framework))];
+  const fwMap = {};
+  dailyByFramework.forEach(r => {
+    if (!fwMap[r.framework]) fwMap[r.framework] = {};
+    fwMap[r.framework][r.date] = r.count;
+  });
+  const dailyFramework = {
+    labels: fwDates,
+    datasets: Object.fromEntries(fwNames.map(fw => [
+      fw,
+      fwDates.map(d => (fwMap[fw] && fwMap[fw][d]) || 0),
+    ])),
+  };
+
   res.json({
     totals,
     by_category:     groupScalar('category'),
@@ -1608,6 +1647,7 @@ app.get('/api/stats', (_req, res) => {
     by_source:        groupScalar('source_available'),
     by_time_to_build: groupScalar('time_to_build'),
     by_complexity:    groupScalar('complexity_tier'),
+    by_framework:    groupScalar('agent_framework'),
     by_integration:  groupArray('integrations'),
     by_tool:         groupArray('tools_used'),
     by_skill:        groupArray('skills'),
@@ -1617,6 +1657,7 @@ app.get('/api/stats', (_req, res) => {
     daily,
     cumulative,
     cumulative_tokens: cumulativeTokens,
+    daily_framework: dailyFramework,
 
     // GitHub repo stats — latest snapshot from github_stats table
     github: one(`SELECT * FROM github_stats ORDER BY date DESC LIMIT 1`),
