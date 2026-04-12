@@ -539,6 +539,8 @@ a { color: inherit; text-decoration: none; }
 .chip-deployment { background: rgba(66,214,164,0.10); color: #7de6bf; border-color: rgba(66,214,164,0.3); }
 .chip-hours    { background: rgba(255,184,107,0.10); color: var(--accent-2); border-color: rgba(255,184,107,0.3); }
 .chip-integration { background: rgba(200,121,255,0.10); color: #d9a8ff; border-color: rgba(200,121,255,0.3); }
+.chip-model  { background: rgba(99,179,237,0.10); color: #90cdf4; border-color: rgba(99,179,237,0.3); }
+.chip-runs   { background: rgba(255,184,107,0.10); color: var(--accent-2); border-color: rgba(255,184,107,0.3); }
 
 .chip-row {
   display: flex;
@@ -748,10 +750,10 @@ a { color: inherit; text-decoration: none; }
   padding: 16px 18px;
 }
 .card-title {
-  font-size: 17px;
-  font-weight: 700;
-  margin: 0 0 8px;
-  line-height: 1.3;
+  font-size: 18px;
+  font-weight: 800;
+  margin: 0 0 6px;
+  line-height: 1.25;
   color: var(--text);
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -759,10 +761,11 @@ a { color: inherit; text-decoration: none; }
   overflow: hidden;
 }
 .card-pitch {
-  font-size: 13.5px;
-  line-height: 1.55;
+  font-size: 13px;
+  line-height: 1.5;
   color: var(--text-dim);
   margin: 0 0 14px;
+  opacity: 0.75;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -848,6 +851,70 @@ a { color: inherit; text-decoration: none; }
   50%      { opacity: 0.35; }
 }
 
+/* ---------- trending badge ---------- */
+.trending-badge {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 11px;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #fff;
+  background: linear-gradient(135deg, #ff6b35, #e63946);
+  border-radius: 999px;
+  box-shadow: 0 4px 14px -4px rgba(230, 57, 70, 0.7);
+}
+
+/* ---------- gallery count badge ---------- */
+.gallery-badge {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 2;
+  padding: 4px 9px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(6px);
+  border-radius: 999px;
+}
+
+/* ---------- AI grade badge (in card footer) ---------- */
+.grade-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  font-size: 10px;
+  font-weight: 900;
+  border-radius: 6px;
+  flex-shrink: 0;
+  line-height: 1;
+}
+.grade-s { background: #7c5cff; color: #fff; }
+.grade-a { background: #42d6a4; color: #0b0e17; }
+.grade-b { background: #3b82f6; color: #fff; }
+.grade-c { background: #f59e0b; color: #0b0e17; }
+.grade-d { background: #6b7280; color: #fff; }
+
+/* ---------- staggered card entrance ---------- */
+.feed-loaded .card {
+  animation: card-stagger-in 0.4s ease both;
+  animation-delay: calc(var(--i, 0) * 40ms);
+}
+@keyframes card-stagger-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
 /* Cards that just flash in via live polling */
 .card.just-arrived {
   animation: card-flash-in 0.9s ease-out;
@@ -910,15 +977,18 @@ a { color: inherit; text-decoration: none; }
   .card-body  { padding: 10px 12px 12px; }
   .card-title {
     font-size: 15px;
-    line-height: 1.3;
+    font-weight: 800;
+    line-height: 1.25;
     margin-bottom: 4px;
   }
-  .card-pitch { font-size: 12.5px; margin-bottom: 8px; }
+  .card-pitch { font-size: 12px; margin-bottom: 8px; }
   .chip-row   { gap: 4px; margin-bottom: 2px; }
   .chip       { font-size: 10px; padding: 2px 6px; }
   .card-foot  { font-size: 11px; padding-top: 6px; }
   .card-foot .like-btn { font-size: 11px; padding: 4px 8px; }
-  .new-badge  { font-size: 9px; padding: 2px 6px; }
+  .new-badge, .trending-badge { font-size: 9px; padding: 2px 6px; }
+  .gallery-badge { font-size: 9px; padding: 3px 7px; }
+  .grade-badge { width: 18px; height: 18px; font-size: 9px; border-radius: 4px; }
   .placeholder-initials { font-size: 28px; }
 }
 

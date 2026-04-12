@@ -1894,7 +1894,44 @@ app.get('/submit/agent', (_req, res) => {
 app.get('/submit', serveHtml('submit.html'));
 app.get('/stats', serveHtml('stats.html'));
 app.get('/rankings', serveHtml('rankings.html'));
-app.get('/use-cases/:id', serveHtml('use-case.html'));
+// Detail page with dynamic OG meta tags — so sharing an agent link on
+// Twitter/Discord shows that agent's image, title, and pitch instead of
+// generic DiscoverHermes branding.
+app.get('/use-cases/:id', (req, res) => {
+  const fullPath = path.join(__dirname, 'public', 'use-case.html');
+  fs.readFile(fullPath, 'utf8', (err, html) => {
+    if (err) return res.status(500).type('text/plain').send('error loading page');
+
+    let out = html.replace(/(href|src)="\/(styles\.css|app\.js)"/g, `$1="/$2?v=${BUILD_ID}"`);
+
+    // Look up the submission to inject its metadata into OG tags.
+    const id = Number(req.params.id);
+    if (Number.isInteger(id)) {
+      const row = db.prepare('SELECT title, pitch, image_url FROM submissions WHERE id = ? AND approved = 1').get(id);
+      if (row) {
+        const esc = (s) => String(s || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+        const ogTitle = esc(row.title) + ' — DiscoverHermes';
+        const ogDesc = esc(row.pitch || 'A Hermes agent use case on DiscoverHermes.');
+        const ogImg = row.image_url
+          ? (row.image_url.startsWith('/') ? `${PUBLIC_URL}${row.image_url}` : row.image_url)
+          : `${PUBLIC_URL}/og-image.svg`;
+
+        out = out
+          .replace(/<title>[^<]*<\/title>/, `<title>${ogTitle}</title>`)
+          .replace(/(<meta\s+name="description"\s+content=")[^"]*"/,  `$1${ogDesc}"`)
+          .replace(/(<meta\s+property="og:title"\s+content=")[^"]*"/,  `$1${ogTitle}"`)
+          .replace(/(<meta\s+property="og:description"\s+content=")[^"]*"/,  `$1${ogDesc}"`)
+          .replace(/(<meta\s+property="og:image"\s+content=")[^"]*"/,  `$1${ogImg}"`)
+          .replace(/(<meta\s+name="twitter:title"\s+content=")[^"]*"/,  `$1${ogTitle}"`)
+          .replace(/(<meta\s+name="twitter:description"\s+content=")[^"]*"/,  `$1${ogDesc}"`)
+          .replace(/(<meta\s+name="twitter:image"\s+content=")[^"]*"/,  `$1${ogImg}"`);
+      }
+    }
+
+    res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+    res.type('html').send(out);
+  });
+});
 
 // Graceful shutdown for Railway / container environments
 // Ensures SQLite WAL is checkpointed before exit

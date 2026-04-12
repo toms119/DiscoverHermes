@@ -213,20 +213,30 @@
   }
 
   function chipRow(item) {
-    // Only the chips that actually exist — no empty slots.
+    // Prioritize chips that tell the agent's story: category, key integration,
+    // model, then impact metric.  Generic taxonomy (deployment, trigger) is
+    // less interesting for discovery browsing.
     const chips = [];
     if (item.category) chips.push(['category', item.category]);
-    if (item.platform) chips.push(['platform', item.platform]);
-    if (item.trigger_type) chips.push(['trigger', item.trigger_type]);
-    if (item.deployment) chips.push(['deployment', item.deployment]);
-    if (item.time_saved_per_week) chips.push(['hours', `${item.time_saved_per_week}h/wk saved`]);
     if (Array.isArray(item.integrations) && item.integrations[0]) {
       chips.push(['integration', item.integrations[0]]);
     }
+    if (item.model) chips.push(['model', item.model]);
+    else if (item.platform) chips.push(['platform', item.platform]);
+    if (item.time_saved_per_week) chips.push(['hours', `${item.time_saved_per_week}h/wk saved`]);
+    else if (item.runs_completed) chips.push(['runs', `${fmtNum(item.runs_completed)} runs`]);
+    if (item.deployment) chips.push(['deployment', item.deployment]);
     return chips
       .slice(0, 4)
       .map(([k, v]) => `<span class="chip chip-${k}">${escapeHtml(v)}</span>`)
       .join('');
+  }
+
+  // Compact number formatter: 1200 → "1.2k", 1500000 → "1.5M"
+  function fmtNum(n) {
+    if (n >= 1e6) return (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
+    if (n >= 1e3) return (n / 1e3).toFixed(1).replace(/\.0$/, '') + 'k';
+    return String(n);
   }
 
   // ==========================================================
@@ -263,17 +273,27 @@
       const cls = ['card'];
       if (fresh) cls.push('is-new');
       if (extraClass) cls.push(extraClass);
-      const badge = fresh ? `<span class="new-badge">New</span>` : '';
+      const badge = fresh
+        ? `<span class="new-badge">New</span>`
+        : (extraClass.includes('is-trending') ? `<span class="trending-badge">🔥 Trending</span>` : '');
+      // Gallery indicator — show image count if agent has multiple images
+      const gallery = Array.isArray(item.gallery) ? item.gallery : [];
+      const galleryCount = (item.image_url ? 1 : 0) + gallery.length;
+      const galleryBadge = galleryCount > 1
+        ? `<span class="gallery-badge" title="${galleryCount} images">📷 ${galleryCount}</span>` : '';
+      // AI grade badge — show letter grade when scored
+      const gradeBadge = item.ai_grade
+        ? `<span class="grade-badge grade-${item.ai_grade.toLowerCase()}">${escapeHtml(item.ai_grade)}</span>` : '';
       return `
         <div class="${cls.join(' ')}" data-href="/use-cases/${item.id}" data-id="${item.id}">
-          ${badge}
+          ${badge}${galleryBadge}
           ${mediaBlock(item)}
           <div class="card-body">
             <h3 class="card-title">${escapeHtml(item.title)}</h3>
             <p class="card-pitch">${escapeHtml(item.pitch || item.description || '')}</p>
             <div class="chip-row">${chipRow(item)}</div>
             <div class="card-foot">
-              <span class="card-author">${handleBlock(item)}${verifiedBadge(item)}</span>
+              <span class="card-author">${handleBlock(item)}${verifiedBadge(item)}${gradeBadge}</span>
               ${likeBtnHtml(item)}
             </div>
           </div>
@@ -337,7 +357,15 @@
             </div>`;
           return;
         }
-        feedEl.innerHTML = items.map(cardHtml).join('');
+        // Mark top 3 as trending when viewing the trending sort
+        const trendingIds = new Set();
+        if (state.sort === 'trending' && items.length > 1) {
+          items.slice(0, 3).forEach((it) => trendingIds.add(it.id));
+        }
+        feedEl.innerHTML = items.map((item, i) => {
+          const extra = trendingIds.has(item.id) ? 'is-trending' : '';
+          return cardHtml(item, extra).replace('<div class="card', `<div style="--i:${i}" class="card`);
+        }).join('');
         feedEl.classList.add('feed-loaded');
       } catch {
         feedEl.innerHTML = `
