@@ -1391,13 +1391,13 @@
               </div>
             </div>
           </div>` : '')}
-          <div class="score-card human-card">
+          <div class="score-card human-card human-card-likeable" data-id="${item.id}" role="button" tabindex="0" title="Click to like this agent">
             <div class="ai-card-row">
-              <span class="rank-grade human-grade">♥</span>
+              <span class="rank-grade human-grade ${likedSet.has(item.id) ? 'liked' : ''}">♥</span>
               <div>
                 <div class="score-card-title">Human Score</div>
-                <div class="ai-score-num">${netScore}<span class="ai-score-unit"> net</span></div>
-                <div class="ai-score-label">${likesCount} up · ${dislikesCount} down${likesRankStr ? ` · Ranked ${likesRankStr}` : ''}</div>
+                <div class="ai-score-num"><span class="human-card-net">${netScore}</span><span class="ai-score-unit"> net</span></div>
+                <div class="ai-score-label"><span class="human-card-up">${likesCount}</span> up · <span class="human-card-down">${dislikesCount}</span> down${likesRankStr ? ` · Ranked ${likesRankStr}` : ''}</div>
               </div>
             </div>
           </div>
@@ -1709,6 +1709,34 @@
           e.preventDefault();
           toggleDislike(Number(dislikeBtn.dataset.id), dislikeBtn);
         });
+      }
+
+      // Human score card — click the card to like, synced with sidebar like-btn
+      const humanCard = root.querySelector('.human-card-likeable');
+      if (humanCard && likeBtn) {
+        const doLike = () => {
+          toggleLike(Number(humanCard.dataset.id), likeBtn);
+          // Sync visual state back to the human-card
+          requestAnimationFrame(() => {
+            const heart = humanCard.querySelector('.human-grade');
+            const netEl = humanCard.querySelector('.human-card-net');
+            const upEl = humanCard.querySelector('.human-card-up');
+            if (heart) heart.classList.toggle('liked', likedSet.has(Number(humanCard.dataset.id)));
+            if (heart && likedSet.has(Number(humanCard.dataset.id))) {
+              heart.classList.add('like-burst');
+              heart.addEventListener('animationend', () => heart.classList.remove('like-burst'), { once: true });
+            }
+            // Update counts from the canonical like-btn
+            const likeCt = likeBtn.querySelector('.count');
+            const disCt = root.querySelector('.dislike-btn .count');
+            const up = Number(likeCt?.textContent) || 0;
+            const down = Number(disCt?.textContent) || 0;
+            if (netEl) netEl.textContent = up - down;
+            if (upEl) upEl.textContent = up;
+          });
+        };
+        humanCard.addEventListener('click', doLike);
+        humanCard.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); doLike(); } });
       }
 
       // ---------- gallery: author upload + remove ----------

@@ -1394,12 +1394,36 @@ a { color: inherit; text-decoration: none; }
   margin-bottom: 2px;
 }
 
-/* ---------- detail: Human score card ---------- */
-.human-card { }
+/* ---------- detail: Human score card (clickable to like) ---------- */
+.human-card-likeable {
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.human-card-likeable:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(255, 64, 96, 0.2);
+}
+.human-card-likeable:active {
+  transform: scale(0.97);
+}
 .human-grade {
   background: rgba(255, 64, 96, 0.15);
   color: var(--heart, #ff4060);
   font-size: 18px;
+  transition: transform 0.2s ease, color 0.2s ease;
+}
+.human-grade.liked {
+  color: #ff4060;
+  background: rgba(255, 64, 96, 0.3);
+  transform: scale(1.1);
+}
+.human-grade.like-burst {
+  animation: human-heart-burst 0.4s ease;
+}
+@keyframes human-heart-burst {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(1.4); }
+  100% { transform: scale(1.1); }
 }
 
 /* ---------- staggered card entrance ---------- */
