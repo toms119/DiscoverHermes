@@ -754,7 +754,7 @@ a { color: inherit; text-decoration: none; }
   line-height: 1.3;
   color: var(--text);
   display: -webkit-box;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
