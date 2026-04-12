@@ -1309,7 +1309,7 @@
       const rankingsHref = item.category
         ? `/rankings?category=${encodeURIComponent(item.category)}`
         : '/rankings';
-      const gradeLabels = { S: 'Legendary', A: 'Elite', B: 'Solid', C: 'Rising', D: 'Starter' };
+      const gradeLabels = { S: 'Legendary', A: 'Elite', B: 'Solid', C: 'Rising', D: 'Starter', F: 'Needs Work' };
       const aiRankStr = item.ai_rank != null
         ? `#${item.ai_rank}${item.total_scored != null ? ` of ${item.total_scored}` : ''}`
         : null;
@@ -1485,7 +1485,7 @@
         highlights.push(`${fmtNumber(item.runs_completed)} runs completed`);
       }
       if (item.ai_grade) {
-        const gradeWord = { S: 'Legendary', A: 'Elite', B: 'Solid' }[item.ai_grade];
+        const gradeWord = { S: 'Legendary', A: 'Elite', B: 'Solid', C: 'Rising', D: 'Starter', F: 'Needs Work' }[item.ai_grade];
         if (gradeWord) highlights.push(`${gradeWord} (Grade ${escapeHtml(item.ai_grade)})`);
       }
       if (item.running_since) {

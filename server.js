@@ -179,7 +179,7 @@ const DESIRED_COLUMNS = {
   stripe_session_id:     'TEXT',          // idempotency: reject duplicate webhooks
   // AI scoring fields — populated by daily automated review
   ai_score:              'REAL',          // 0-100 composite score (decimal)
-  ai_grade:              'TEXT',          // S, A, B, C, D
+  ai_grade:              'TEXT',          // S, A, B, C, D, F
   ai_score_pending:      'INTEGER',       // 0/1 — waiting for AI scoring
   ai_rationale:          'TEXT',          // brief scoring explanation
   featured:              'INTEGER',       // 0/1 — AI pick for homepage
