@@ -567,18 +567,29 @@ a { color: inherit; text-decoration: none; }
     gap: 12px;
     padding: 8px 12px 48px;
   }
-  .card-media { aspect-ratio: 16 / 9; }
-  .card-body  { padding: 12px 12px 14px; }
-  .card-title { font-size: 15px; line-height: 1.3; margin-bottom: 6px; }
-  .card-pitch { display: block; font-size: 13px; }
-  .chip-row   { display: flex; flex-wrap: wrap; gap: 4px; }
-  .chip {
-    font-size: 10px;
-    padding: 2px 6px;
+  .card-media {
+    aspect-ratio: 16 / 9;
+    width: 100%;
+    display: block;
+    min-height: 80px;          /* fallback if aspect-ratio unsupported */
   }
+  .card-body  { padding: 12px 12px 14px; }
+  .card-title {
+    font-size: 15px;
+    font-weight: 700;
+    line-height: 1.3;
+    margin: 0 0 6px;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .card-pitch { font-size: 13px; }
+  .chip-row   { display: flex; flex-wrap: wrap; gap: 4px; }
+  .chip       { font-size: 10px; padding: 2px 6px; }
   .card-foot  { font-size: 11px; padding-top: 8px; }
   .card-foot .like-btn { font-size: 11px; padding: 4px 8px; }
-  .new-badge { font-size: 9px; padding: 2px 6px; }
+  .new-badge  { font-size: 9px; padding: 2px 6px; }
   .placeholder-initials { font-size: 28px; }
 }
 
@@ -661,10 +672,12 @@ a { color: inherit; text-decoration: none; }
   place-items: center;
   position: relative;
   overflow: hidden;
+  /* Comma-separated hsl for broad browser compat (Safari < 15 etc.) */
+  background: linear-gradient(135deg, #1f2a3a, #10151f);
   background:
     linear-gradient(135deg,
-      hsl(var(--ph-hue, 220) 45% 22%),
-      hsl(var(--ph-hue, 220) 45% 10%));
+      hsl(var(--ph-hue, 220), 45%, 22%),
+      hsl(var(--ph-hue, 220), 45%, 10%));
 }
 .card-media.placeholder::before {
   content: '';
