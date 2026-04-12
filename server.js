@@ -186,6 +186,11 @@ const DESIRED_COLUMNS = {
   featured_reason:       'TEXT',          // short explanation (max 200 chars)
   last_reviewed_at:      'TEXT',          // when AI last scored this
   agent_framework:       'TEXT',          // hermes | openclaw | ironclaw | etc.
+  // v6.2: New scoring signals
+  error_rate:            'INTEGER',       // 0-100: % of runs that errored
+  multi_agent:           'INTEGER',       // 0/1: delegates to sub-agents
+  output_format:         'TEXT',          // structured-data | natural-language | code | mixed
+  tools_used:            'TEXT',          // JSON array of tool names
 };
 const existingCols = new Set(
   db.prepare(`PRAGMA table_info(submissions)`).all().map((c) => c.name)
@@ -395,6 +400,12 @@ function cleanInt(val, max) {
 function cleanBool(val) {
   if (val === true || val === 1 || val === 'yes' || val === 'true') return 1;
   if (val === false || val === 0 || val === 'no' || val === 'false') return 0;
+  return null;
+}
+
+function cleanOutputFormat(val) {
+  const valid = ['structured-data', 'natural-language', 'code', 'mixed'];
+  if (valid.includes(val)) return val;
   return null;
 }
 
@@ -932,6 +943,11 @@ app.post('/api/submissions', smallJson, submitLimiter, submitLimiterDaily, (req,
     twitter_handle: normalizedHandle,
     website:        clean(b.website, 200),
     agent_framework: clean(b.agent_framework, 40) || null,
+    // v6.2: New scoring signals
+    error_rate:     cleanInt(b.error_rate, 100),  // 0-100 percentage
+    multi_agent:    cleanBool(b.multi_agent),
+    output_format:  cleanOutputFormat(b.output_format),
+    tools_used:     JSON.stringify(cleanArray(b.tools_used, 20, 40) || []),
     ai_score_pending: 1,  // New submissions await AI scoring
   };
   if (row.website && !isHttpUrl(row.website)) row.website = null;
@@ -999,6 +1015,8 @@ const EDITABLE_FIELDS = new Set([
   'display_name', 'website', 'agent_framework', 'twitter_handle',
   'total_interactions', 'active_users', 'tasks_completed',
   'runs_completed', 'hours_used', 'tokens_total', 'time_saved_per_week',
+  // v6.2: New scoring signals
+  'error_rate', 'multi_agent', 'output_format', 'tools_used',
 ]);
 app.patch('/api/submissions/:id', smallJson, mutationLimiter, (req, res) => {
   const id = Number(req.params.id);
