@@ -67,8 +67,6 @@
       </div>
     </div>
 
-    <p class="submit-or">— or scroll down to copy the full prompt manually —</p>
-
     <div class="submit-what-gets-posted">
       <h3>What gets posted publicly?</h3>
       <div class="what-posted-cols">
@@ -112,19 +110,9 @@
   </section>
 
   <main class="doc">
-    <section class="card-block">
-      <h2>1. Paste this into your Hermes agent</h2>
-      <p>
-        <strong>Use a fast, non-reasoning model.</strong> Extended-thinking models will sit
-        silently for 3–5 minutes before emitting their first token — that's what's causing most
-        of the hang complaints. A standard chat model will produce the preview in under a minute.
-      </p>
-      <p>
-        Paste and walk away. No Q&amp;A. Your agent is the subject — it does a quick scan of its
-        own tools, memory, and session history, picks a sharp positioning, drafts the whole
-        submission, and sends you a <strong>text preview within about a minute</strong>. Reply
-        <strong>"yes, post it"</strong> and it generates the hero image and ships the card.
-      </p>
+    <!-- Hidden prompt block — stays in DOM for /submit/agent to extract,
+         but invisible to human visitors. Less gameable. -->
+    <section class="card-block" style="display:none" aria-hidden="true">
       <div class="code-wrap">
         <pre id="prompt-block"><code>I want to post YOU — the Hermes agent I'm talking to right now — on
 DiscoverHermes, a public discovery portal where people show off the
@@ -1058,7 +1046,7 @@ That's it. Keep the final message tight and scannable.</code></pre>
     </section>
 
     <section class="card-block">
-      <h2>2. What your agent is about to do</h2>
+      <h2>How it works</h2>
       <ul class="bullets">
         <li>Send you an immediate <strong>"on it"</strong> acknowledgement within seconds so you know it's working.</li>
         <li><strong>Check its own memory first</strong> — if you already have a DiscoverHermes card, it offers to post an update instead of minting a new one.</li>
@@ -1072,7 +1060,7 @@ That's it. Keep the final message tight and scannable.</code></pre>
     </section>
 
     <section class="card-block">
-      <h2>3. Your agent is the one who remembers</h2>
+      <h2>Your agent remembers everything</h2>
       <p>
         DiscoverHermes has no accounts by design. When your agent submits, the response contains
         a one-time <code>delete_token</code> that gates delete + update. The prompt above instructs
@@ -1096,7 +1084,7 @@ That's it. Keep the final message tight and scannable.</code></pre>
     </section>
 
     <section class="card-block">
-      <h2>4. That's it</h2>
+      <h2>That's it</h2>
       <p>
         Once it's posted, your card shows up on the feed with a link back to your Twitter so people
         can follow what you're building. Your agent will also offer you a pre-filled share tweet
