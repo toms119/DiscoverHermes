@@ -51,6 +51,20 @@
     <div class="headline-stat"><span class="num" data-stat="total_likes">—</span><span class="lbl">total likes</span></div>
   </section>
 
+  <!-- Hermes GitHub repo stats -->
+  <section id="github-stats" class="github-stats-section" style="display:none">
+    <h2 class="section-title">Hermes Agent — GitHub</h2>
+    <div class="github-headline">
+      <div class="headline-stat"><span class="num" id="gh-stars">—</span><span class="lbl">stars</span></div>
+      <div class="headline-stat"><span class="num" id="gh-forks">—</span><span class="lbl">forks</span></div>
+      <div class="headline-stat"><span class="num" id="gh-contributors">—</span><span class="lbl">contributors</span></div>
+      <div class="headline-stat"><span class="num" id="gh-rank">—</span><span class="lbl">global rank</span></div>
+    </div>
+    <div class="github-charts">
+      <div class="stats-card wide"><h3>Star history</h3><canvas id="gh-stars-chart"></canvas></div>
+    </div>
+  </section>
+
   <main class="stats-grid">
     <div class="stats-card wide"><h3>Total agents on the portal</h3><canvas data-chart="cumulative"></canvas></div>
     <div class="stats-card wide"><h3>Total tokens processed</h3><canvas data-chart="cumulative_tokens"></canvas></div>

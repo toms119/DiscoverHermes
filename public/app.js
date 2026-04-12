@@ -1601,6 +1601,52 @@
         else if (donutKeys.has(key)) donutChart(canvas, rows);
         else barChart(canvas, rows, horizontalKeys.has(key));
       });
+
+      // GitHub repo stats section
+      const ghSection = document.getElementById('github-stats');
+      if (ghSection && data.github) {
+        const gh = data.github;
+        ghSection.style.display = '';
+        const setText = (id, val) => {
+          const el = document.getElementById(id);
+          if (el && val != null) el.textContent = fmtNumber(val);
+        };
+        setText('gh-stars', gh.stars);
+        setText('gh-forks', gh.forks);
+        setText('gh-contributors', gh.contributors);
+        const rankEl = document.getElementById('gh-rank');
+        if (rankEl && gh.global_rank) rankEl.textContent = '#' + fmtNumber(gh.global_rank);
+
+        // Star history chart
+        const ghHistory = data.github_history;
+        const starsCanvas = document.getElementById('gh-stars-chart');
+        if (starsCanvas && Array.isArray(ghHistory) && ghHistory.length > 0) {
+          new Chart(starsCanvas, {
+            type: 'line',
+            data: {
+              labels: ghHistory.map((r) => r.date),
+              datasets: [{
+                label: 'stars',
+                data: ghHistory.map((r) => r.stars),
+                borderColor: '#ffd166',
+                backgroundColor: 'rgba(255,209,102,0.12)',
+                fill: true,
+                tension: 0.3,
+                pointRadius: 2,
+              }],
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: { legend: { display: false } },
+              scales: {
+                x: { grid: { color: '#1c2030' } },
+                y: { grid: { color: '#1c2030' } },
+              },
+            },
+          });
+        }
+      }
     });
   }
 
