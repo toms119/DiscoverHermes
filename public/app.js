@@ -955,26 +955,53 @@
         </div>
 
         <div class="detail-layout">
-          <aside class="detail-side detail-side-left">
+          <aside class="detail-side">
             ${authorCard}
             ${engagementCard}
-            ${metricHtml}
             ${aiCard}
-            ${buildCard}
           </aside>
 
           <div class="detail-main">
             ${overviewPanel}
+            ${hasTech ? `<section class="detail-section spec-section"><h2>Tech stack</h2>
+              <div class="spec-grid">
+                ${sideKv('Platform', item.platform)}
+                ${sideKv('Trigger', item.trigger_type)}
+                ${sideKv('Schedule', item.trigger_detail)}
+                ${item.integrations?.length ? `<div class="spec-row"><span class="spec-label">Integrations</span><span class="spec-val">${item.integrations.map(v => `<span class="chip">${escapeHtml(v)}</span>`).join('')}</span></div>` : ''}
+                ${item.tools_used?.length ? `<div class="spec-row"><span class="spec-label">Tools</span><span class="spec-val">${item.tools_used.map(v => `<span class="chip">${escapeHtml(v)}</span>`).join('')}</span></div>` : ''}
+                ${item.data_sources?.length ? `<div class="spec-row"><span class="spec-label">Data sources</span><span class="spec-val">${item.data_sources.map(v => `<span class="chip">${escapeHtml(v)}</span>`).join('')}</span></div>` : ''}
+                ${item.output_channels?.length ? `<div class="spec-row"><span class="spec-label">Outputs to</span><span class="spec-val">${item.output_channels.map(v => `<span class="chip">${escapeHtml(v)}</span>`).join('')}</span></div>` : ''}
+              </div></section>` : ''}
+            ${hasInfra ? `<section class="detail-section spec-section"><h2>Infrastructure</h2>
+              <div class="spec-grid">
+                ${sideKv('Model', item.model)}
+                ${sideKv('Provider', item.model_provider)}
+                ${sideKv('Deployment', item.deployment)}
+                ${sideKv('Host', item.host)}
+                ${sideKv('Context', item.context_window ? fmtNumber(item.context_window) + ' tokens' : null)}
+                ${sideKv('Memory', item.memory_type)}
+              </div></section>` : ''}
+            ${hasBuildDetails ? `<section class="detail-section spec-section"><h2>Builder profile</h2>
+              <div class="spec-grid">
+                ${sideKv('Automation', humanize(item.automation_level))}
+                ${sideKv('Complexity', humanize(item.complexity_tier))}
+                ${sideKv('Time to build', humanize(item.time_to_build))}
+                ${sideKv('Reliability', humanize(item.reliability))}
+                ${sideKv('Cost tier', humanize(item.cost_tier))}
+                ${sideKv('Source', humanize(item.source_available))}
+              </div></section>` : ''}
+            ${hasCode ? `<section class="detail-section spec-section"><h2>Source & code</h2>
+              <div class="spec-grid">
+                ${item.github_url ? `<div class="spec-row"><span class="spec-label">GitHub</span><span class="spec-val"><a class="ext-link" href="${escapeHtml(item.github_url)}" target="_blank" rel="noopener">${escapeHtml(item.github_url.replace(/^https?:\/\//, '').replace(/^www\./, ''))}</a></span></div>` : ''}
+                ${item.source_url ? `<div class="spec-row"><span class="spec-label">Gist / source</span><span class="spec-val"><a class="ext-link" href="${escapeHtml(item.source_url)}" target="_blank" rel="noopener">${escapeHtml(item.source_url.replace(/^https?:\/\//, '').replace(/^www\./, ''))}</a></span></div>` : ''}
+              </div></section>` : ''}
+            ${hasTags ? `<section class="detail-section spec-section"><h2>Tags</h2>
+              <div class="tag-cloud">${item.tags.map(t => `<span class="chip">${escapeHtml(t)}</span>`).join('')}</div></section>` : ''}
+            ${gallerySectionHtml}
+            ${commentsSectionHtml}
           </div>
-
-          <aside class="detail-side detail-side-right">
-            ${techCard}
-            ${infraCard}
-            ${codeCard}
-            ${tagsCard}
-          </aside>
-        </div>
-      `;
+        </div>`;
 
       const likeBtn = root.querySelector('.like-btn');
       if (likeBtn) {

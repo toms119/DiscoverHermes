@@ -816,11 +816,11 @@ a { color: inherit; text-decoration: none; }
   margin: 0;
 }
 
-/* ---------- detail: 3-column layout ---------- */
+/* ---------- detail: 2-column layout (sidebar left, story right) ---------- */
 .detail-layout {
   display: grid;
-  grid-template-columns: 280px minmax(0, 1fr) 300px;
-  gap: 22px;
+  grid-template-columns: 300px minmax(0, 1fr);
+  gap: 24px;
   align-items: start;
 }
 .detail-side {
@@ -837,29 +837,17 @@ a { color: inherit; text-decoration: none; }
   min-width: 0;
   overflow: hidden;
 }
-@media (max-width: 1120px) {
-  .detail-layout {
-    grid-template-columns: 260px minmax(0, 1fr);
-  }
-  .detail-side-right {
-    grid-column: 1 / -1;
-    position: static;
-    flex-direction: row;
-    flex-wrap: wrap;
-    gap: 16px;
-  }
-  .detail-side-right .side-card { flex: 1 1 280px; }
-}
-@media (max-width: 780px) {
+@media (max-width: 960px) {
   .detail-layout {
     grid-template-columns: 1fr;
   }
   .detail-side {
     position: static;
-    flex-direction: column;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 12px;
   }
-  .detail-side-right { flex-direction: column; }
-  .detail-side-right .side-card { flex: none; }
+  .detail-side .side-card { flex: 1 1 260px; }
 }
 
 /* ---------- detail: side cards ---------- */
@@ -1194,6 +1182,47 @@ a { color: inherit; text-decoration: none; }
   margin: 0 0 16px;
   font-weight: 700;
 }
+
+/* Spec grid: key-value layout for tech stack, infra, builder sections */
+.spec-section {
+  padding: 20px 32px;
+}
+.spec-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px 24px;
+}
+.spec-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.spec-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+  font-weight: 600;
+}
+.spec-val {
+  font-size: 14px;
+  color: var(--text);
+}
+.spec-val a {
+  color: var(--accent);
+}
+.spec-val a:hover {
+  text-decoration: underline;
+}
+.tag-cloud {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+@media (max-width: 640px) {
+  .spec-section { padding: 20px; }
+  .spec-grid { grid-template-columns: 1fr; }
+}
 .updates-panel { padding: 28px 32px; }
 @media (max-width: 640px) {
   .detail-hero-head { padding: 22px 20px; }
@@ -1214,9 +1243,9 @@ a { color: inherit; text-decoration: none; }
   color: var(--text);
   font-weight: 700;
   display: inline;
-  background: linear-gradient(180deg, transparent 62%, rgba(255, 138, 61, 0.22) 62%);
-  padding: 0 2px;
-  margin-right: 2px;
+  background: rgba(255, 138, 61, 0.18);
+  padding: 2px 4px;
+  border-radius: 3px;
 }
 
 /* Updates section living inline below the story, no more tabs. */
