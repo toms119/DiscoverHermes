@@ -331,7 +331,7 @@
       // AI score pill — shown in footer next to likes for clean comparison
       const aiScorePill = item.ai_score
         ? `<span class="card-ai-score" title="AI Score: ${item.ai_score}/100"><span class="card-ai-num">${item.ai_score}</span> AI Score</span>`
-        : (item.ai_score_pending ? `<span class="card-ai-score card-ai-pending">Pending…</span>` : '');
+        : (item.ai_score_pending ? `<span class="card-ai-score card-ai-pending">Pending AI Score</span>` : '');
       const achievs = achievementBadges(item);
       return `
         <div class="${cls.join(' ')}" data-href="/use-cases/${item.id}" data-id="${item.id}">
@@ -1218,7 +1218,17 @@
               </div>
             </div>
             ${item.featured && item.featured_reason ? `<p class="ai-featured">⭐ ${escapeHtml(item.featured_reason)}</p>` : ''}
-          </div>` : ''}
+          </div>` : (item.ai_score_pending ? `
+          <div class="score-card ai-card">
+            <div class="ai-card-row">
+              <span class="rank-grade grade-pending">…</span>
+              <div>
+                <div class="score-card-title">AI Score</div>
+                <div class="ai-score-num" style="font-size:16px;opacity:0.6">Pending</div>
+                <div class="ai-score-label">Score is being calculated</div>
+              </div>
+            </div>
+          </div>` : '')}
           <div class="score-card human-card">
             <div class="ai-card-row">
               <span class="rank-grade human-grade">♥</span>
