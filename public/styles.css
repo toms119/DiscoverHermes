@@ -874,7 +874,7 @@ a { color: inherit; text-decoration: none; }
    below. That's the explicit design the user asked for. Gap shrinks on
    narrow screens so the tiles don't get too squeezed. */
 .feed {
-  max-width: 1260px;
+  max-width: var(--maxw);
   margin: 0 auto;
   padding: 8px 24px 64px;
   display: grid;
