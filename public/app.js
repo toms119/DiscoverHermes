@@ -917,8 +917,8 @@
   // ==========================================================
   // ACTIVITY FEED TICKER (feed page — independent pop-up slots)
   // One single-line-height bar. 3 slots inside, each independently cycles
-  // through items on its own timer so they pop in/out at different times.
-  // Each slot gets a color based on the item type.
+  // through items on its own timer. Varied orange shades, no emojis.
+  // Names and numbers are bolded.
   // ==========================================================
   async function loadActivityFeed() {
     var container = document.getElementById('activity-feed');
@@ -927,14 +927,22 @@
       var res = await fetch('/api/activity');
       var items = await res.json();
       if (!Array.isArray(items) || items.length === 0) return;
-      var icons = { submitted: '\uD83D\uDE80', scored: '\u2B50', commented: '\uD83D\uDCAC', trending: '\uD83D\uDD25' };
-      // Each type gets a distinct hue
-      var colors = {
-        submitted: 'activity-color-orange',
-        scored:    'activity-color-gold',
-        commented: 'activity-color-blue',
-        trending:  'activity-color-red'
-      };
+
+      // Varied orange shade classes — each slot picks one per item
+      var shades = ['activity-shade-0','activity-shade-1','activity-shade-2','activity-shade-3','activity-shade-4'];
+
+      // Bold @handles, display names, and numbers in text
+      function formatText(raw) {
+        var t = escapeHtml(raw);
+        // Bold @handles
+        t = t.replace(/@[\w]+/g, '<b>$&</b>');
+        // Bold numbers like "28/100", "56/100", standalone digits, "Grade A+"
+        t = t.replace(/\d+\/\d+/g, '<b>$&</b>');
+        t = t.replace(/(?<!\/)(\b\d+\b)(?!\/)/g, '<b>$1</b>');
+        // Bold "Grade X"
+        t = t.replace(/Grade\s+([A-F][+-]?|\?)/g, '<b>Grade $1</b>');
+        return t;
+      }
 
       // Create 3 independent slots
       container.innerHTML = '<div class="activity-slot" id="aslot-0"></div>'
@@ -946,13 +954,13 @@
         var slot = document.getElementById('aslot-' + slotId);
         if (!slot) return;
         var idx = startIdx;
+        var shadeIdx = slotId; // start each slot on a different shade
 
         function showNext() {
           var item = items[idx % items.length];
-          var cls = colors[item.type] || 'activity-color-orange';
-          slot.innerHTML = '<a class="activity-item ' + cls + '" href="' + escapeHtml(item.url) + '">'
-            + '<span class="activity-icon">' + (icons[item.type] || '') + '</span>'
-            + '<span>' + escapeHtml(item.text) + '</span>'
+          var shade = shades[shadeIdx % shades.length];
+          slot.innerHTML = '<a class="activity-item ' + shade + '" href="' + escapeHtml(item.url) + '">'
+            + '<span>' + formatText(item.text) + '</span>'
             + '</a>';
           slot.classList.remove('slot-out');
           slot.classList.add('slot-in');
@@ -964,6 +972,7 @@
             // After fade-out, brief empty gap, then next item
             setTimeout(function() {
               idx = (idx + 1) % items.length;
+              shadeIdx++;
               showNext();
             }, pauseMs);
           }, holdMs);
