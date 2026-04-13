@@ -354,7 +354,7 @@
     // clicked a "Pinecone" chip on a detail page and landed on /?integration=Pinecone.
     const initialParams = new URLSearchParams(location.search);
     const PAGE_SIZE = 24;
-    let feedViewMode = 'grid';
+    let feedViewMode = 'list';
     const state = {
       sort:        'trending',
       category:    '',
@@ -719,8 +719,12 @@
     })();
 
     // Feed view toggle (grid / list)
-    // Ensure feed always starts clean — no leftover classes
-    feedEl.classList.remove('feed-list');
+    // Sync initial class to match default feedViewMode
+    if (feedViewMode === 'list') {
+      feedEl.classList.add('feed-list');
+    } else {
+      feedEl.classList.remove('feed-list');
+    }
     const feedToggle = document.getElementById('feed-view-toggle');
     if (feedToggle) {
       feedToggle.querySelectorAll('.view-toggle-btn').forEach((btn) => {
