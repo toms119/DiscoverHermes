@@ -966,42 +966,55 @@
         + '<div class="activity-slot" id="aslot-1"></div>'
         + '<div class="activity-slot" id="aslot-2"></div>';
 
-      // Each slot runs its own cycle through the items, offset so they don't sync
-      function runSlot(slotId, startIdx, holdMs, pauseMs) {
-        var slot = document.getElementById('aslot-' + slotId);
-        if (!slot) return;
-        var idx = startIdx;
-        var shadeIdx = slotId; // start each slot on a different shade
-
-        function showNext() {
-          var item = items[idx % items.length];
-          var shade = shades[shadeIdx % shades.length];
-          slot.innerHTML = '<a class="activity-item ' + shade + '" href="' + escapeHtml(item.url) + '">'
-            + '<span>' + formatText(item.text, item.type) + '</span>'
-            + '</a>';
-          slot.classList.remove('slot-out');
-          slot.classList.add('slot-in');
-
-          // Hold, then fade out
-          setTimeout(function() {
-            slot.classList.remove('slot-in');
-            slot.classList.add('slot-out');
-            // After fade-out, brief empty gap, then next item
-            setTimeout(function() {
-              idx = (idx + 1) % items.length;
-              shadeIdx++;
-              showNext();
-            }, pauseMs);
-          }, holdMs);
-        }
-        showNext();
+      // Render one item into a slot
+      function renderSlot(slot, item, shadeIdx) {
+        var shade = shades[shadeIdx % shades.length];
+        slot.innerHTML = '<a class="activity-item ' + shade + '" href="' + escapeHtml(item.url) + '">'
+          + '<span>' + formatText(item.text, item.type) + '</span>'
+          + '</a>';
       }
 
-      // Stagger starts: slot 0 starts immediately, slot 1 after 1.5s, slot 2 after 3s
-      // Each has slightly different hold times so they drift apart naturally
-      runSlot(0, 0, 3400, 510);
-      setTimeout(function() { runSlot(1, Math.floor(items.length / 3), 4080, 595); }, 1275);
-      setTimeout(function() { runSlot(2, Math.floor(items.length * 2 / 3), 4420, 680); }, 2550);
+      // Pre-load all 3 slots immediately so they're visible on first paint
+      var slotEls = [
+        document.getElementById('aslot-0'),
+        document.getElementById('aslot-1'),
+        document.getElementById('aslot-2')
+      ];
+      var startOffsets = [0, Math.floor(items.length / 3), Math.floor(items.length * 2 / 3)];
+      for (var s = 0; s < 3; s++) {
+        renderSlot(slotEls[s], items[startOffsets[s] % items.length], s);
+        slotEls[s].classList.add('slot-in');
+      }
+
+      // Each slot cycles independently after the initial display
+      function runSlot(slotId, startIdx, holdMs, pauseMs) {
+        var slot = slotEls[slotId];
+        if (!slot) return;
+        var idx = startIdx;
+        var shadeIdx = slotId;
+
+        function cycleNext() {
+          // Fade out current
+          slot.classList.remove('slot-in');
+          slot.classList.add('slot-out');
+          setTimeout(function() {
+            idx = (idx + 1) % items.length;
+            shadeIdx++;
+            renderSlot(slot, items[idx], shadeIdx);
+            slot.classList.remove('slot-out');
+            slot.classList.add('slot-in');
+            // Hold, then cycle again
+            setTimeout(cycleNext, holdMs);
+          }, pauseMs);
+        }
+        // First cycle starts after the initial hold
+        setTimeout(cycleNext, holdMs);
+      }
+
+      // All 3 start cycling at staggered intervals so they drift apart
+      runSlot(0, startOffsets[0], 3400, 510);
+      runSlot(1, startOffsets[1], 4080, 595);
+      runSlot(2, startOffsets[2], 4420, 680);
     } catch (e) {
       // silently ignore — ticker is non-critical
     }
