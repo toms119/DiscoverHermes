@@ -29,6 +29,7 @@
       <a class="ghost active" href="/">Feed</a>
       <a class="ghost" href="/rankings">Rankings</a>
       <a class="ghost" href="/stats">Stats</a>
+      <a class="ghost" href="/ecosystem">Ecosystem</a>
       <a class="ghost" href="https://hermes-agent.nousresearch.com/" target="_blank" rel="noopener">Install Hermes</a>
       <a class="primary" href="/submit"><span class="nav-full">Showoff your agent</span><span class="nav-short">Submit</span></a>
     </nav>
@@ -37,6 +38,9 @@
   <section class="hero">
     <h1>See what people are building with <span id="hero-framework" class="hero-cycle">Hermes</span></h1>
   </section>
+
+  <!-- Live activity ticker -->
+  <div id="activity-feed" class="activity-feed"></div>
 
   <!-- Top Agents spotlight strip -->
   <section id="spotlight" class="spotlight" style="display: none;">
@@ -53,10 +57,9 @@
   <!-- Headline stats band, populated from /api/stats -->
   <section id="headline" class="headline">
     <div class="headline-stat"><span class="num" data-stat="total_agents">—</span><span class="lbl">agents live</span></div>
-    <div class="headline-stat"><span class="num" data-stat="total_interactions">—</span><span class="lbl">interactions</span></div>
-    <div class="headline-stat"><span class="num" data-stat="total_tasks">—</span><span class="lbl">tasks done</span></div>
     <div class="headline-stat"><span class="num" data-stat="new_this_week">—</span><span class="lbl">dropped this week</span></div>
-    <div class="headline-stat"><span class="num" data-stat="total_likes">—</span><span class="lbl">community love</span></div>
+    <div class="headline-stat"><span class="num" data-stat="top_likes">—</span><span class="lbl">most liked</span></div>
+    <div class="headline-stat"><span class="num" data-stat="top_ai_score">—</span><span class="lbl">top AI score</span></div>
   </section>
 
   <!-- Sort tabs + search -->
@@ -70,8 +73,18 @@
         <span class="checkmark">✓</span> Verified only
       </button>
     </div>
-    <div class="search">
-      <input id="search-input" type="search" placeholder="Search agents, models, integrations…" />
+    <div class="controls-right">
+      <div id="feed-view-toggle" class="view-toggle">
+        <button class="view-toggle-btn active" data-mode="grid" title="Grid view">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/><rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>
+        </button>
+        <button class="view-toggle-btn" data-mode="list" title="List view">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="2" width="14" height="3" rx="1"/><rect x="1" y="7" width="14" height="3" rx="1"/><rect x="1" y="12" width="14" height="3" rx="1"/></svg>
+        </button>
+      </div>
+      <div class="search">
+        <input id="search-input" type="search" placeholder="Search agents, models, integrations…" />
+      </div>
     </div>
   </section>
 
@@ -96,7 +109,7 @@
       <button class="copy-btn" data-copy-text="9mhSvoJmtY1u73xKV6tKMPek75iPbaVxG7xW9NJw5mYn" type="button">copy</button>
     </span>
     <a href="/submit">Show off what you built →</a>
-    <a href="https://github.com/toms119/DiscoverHermes" target="_blank" rel="noopener">Contribute on GitHub →</a>
+    <a class="footer-github" href="https://github.com/toms119/DiscoverHermes" target="_blank" rel="noopener">⭐ Contribute &amp; improve on GitHub →</a>
   </footer>
 
   <script src="/app.js"></script>

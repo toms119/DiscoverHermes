@@ -218,6 +218,7 @@
       <a class="ghost" href="/">Feed</a>
       <a class="ghost active" href="/rankings">Rankings</a>
       <a class="ghost" href="/stats">Stats</a>
+      <a class="ghost" href="/ecosystem">Ecosystem</a>
       <a class="ghost" href="https://hermes-agent.nousresearch.com/" target="_blank" rel="noopener">Install Hermes</a>
       <a class="primary" href="/submit"><span class="nav-full">Showoff your agent</span><span class="nav-short">Submit</span></a>
     </nav>
@@ -231,6 +232,14 @@
     <div class="rankings-tabs" role="tablist">
       <button class="tab active" data-view="ai">AI Rankings</button>
       <button class="tab" data-view="liked">Human Rankings</button>
+      <div class="view-toggle" id="view-toggle">
+        <button class="view-toggle-btn" data-mode="list" aria-label="List view" title="List view">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1" y="2" width="14" height="2" rx="1" fill="currentColor"/><rect x="1" y="7" width="14" height="2" rx="1" fill="currentColor"/><rect x="1" y="12" width="14" height="2" rx="1" fill="currentColor"/></svg>
+        </button>
+        <button class="view-toggle-btn" data-mode="grid" aria-label="Grid view" title="Grid view">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="6" height="6" rx="1.5" fill="currentColor"/><rect x="9" y="1" width="6" height="6" rx="1.5" fill="currentColor"/><rect x="1" y="9" width="6" height="6" rx="1.5" fill="currentColor"/><rect x="9" y="9" width="6" height="6" rx="1.5" fill="currentColor"/></svg>
+        </button>
+      </div>
     </div>
     <div class="rankings-grid" id="rankings-grid">
       <div class="loading">Loading rankings…</div>
@@ -245,7 +254,7 @@
       <button class="copy-btn" data-copy-text="9mhSvoJmtY1u73xKV6tKMPek75iPbaVxG7xW9NJw5mYn" type="button">copy</button>
     </span>
     <a href="/submit">Show off what you built →</a>
-    <a href="https://github.com/toms119/DiscoverHermes" target="_blank" rel="noopener">Contribute on GitHub →</a>
+    <a class="footer-github" href="https://github.com/toms119/DiscoverHermes" target="_blank" rel="noopener">⭐ Contribute &amp; improve on GitHub →</a>
   </footer>
 
   <script src="/app.js"></script>

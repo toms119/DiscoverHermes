@@ -177,6 +177,10 @@ const DESIRED_COLUMNS = {
   verified:              'INTEGER',       // 0/1 — flipped by Stripe webhook
   verified_at:           'TEXT',          // timestamp of payment
   stripe_session_id:     'TEXT',          // idempotency: reject duplicate webhooks
+  // v4: additional signal fields for AI scoring accuracy
+  error_rate:            'INTEGER',       // 0-100 pct of runs that errored/retried
+  multi_agent:           'INTEGER',       // 0/1 — delegates to sub-agents
+  output_format:         'TEXT',          // structured-data | natural-language | code | mixed
   // AI scoring fields — populated by daily automated review
   ai_score:              'REAL',          // 0-100 composite score (decimal)
   ai_grade:              'TEXT',          // S, A, B, C, D, F
@@ -240,6 +244,24 @@ db.exec(`
     weekly_pushes INTEGER,
     weekly_issues_closed INTEGER
   );
+`);
+
+// ---------- score history ----------
+// Tracks AI score and human likes over time for sparkline graphs.
+// A new row is inserted each time the AI rescores a submission,
+// and we snapshot current likes on each page view via the API.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS score_history (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    submission_id  INTEGER NOT NULL,
+    ai_score       REAL,
+    likes          INTEGER NOT NULL DEFAULT 0,
+    dislikes       INTEGER NOT NULL DEFAULT 0,
+    recorded_at    TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (submission_id) REFERENCES submissions(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_score_hist_sub
+    ON score_history(submission_id, recorded_at);
 `);
 
 // ---------- living-database updates ----------
@@ -413,17 +435,22 @@ function cleanOutputFormat(val) {
 // text as 23 characters via t.co, regardless of the actual URL length, so we
 // budget against that constant. Always ship prefix + title + card URL; fit
 // the pitch in between only if there's room for at least a meaningful chunk.
-function buildShareTweet(title, pitch, cardUrl) {
+function buildShareTweet(title, pitch, cardUrl, aiScore) {
   const MAX = 280;
   const URL_LEN = 23;               // t.co shortener, fixed
-  const PREFIX = 'I shared my agent on @DiscoverHermes:';
   const SEP = '\n\n';
 
-  const titleText = (title || '').trim();
-  const pitchText = (pitch || '').trim();
+  // Build prefix — include AI score when available
+  let prefix = 'I shared my agent on @DiscoverHermes';
+  if (aiScore != null && Number(aiScore) > 0) {
+    prefix += ` — AI Score: ${Number.isInteger(Number(aiScore)) ? Number(aiScore) : Number(aiScore).toFixed(1)}/100`;
+  }
+  prefix += ':';
 
-  // Required overhead: PREFIX + SEP + <title> + SEP + <url>
-  const baseOverhead = PREFIX.length + SEP.length + SEP.length + URL_LEN;
+  const titleText = (title || '').trim();
+
+  // Required overhead: prefix + SEP + <title> + SEP + <url>
+  const baseOverhead = prefix.length + SEP.length + SEP.length + URL_LEN;
   const titleMax = MAX - baseOverhead;
 
   let titleSafe = titleText;
@@ -431,23 +458,7 @@ function buildShareTweet(title, pitch, cardUrl) {
     titleSafe = titleSafe.slice(0, Math.max(0, titleMax - 1)).trimEnd() + '…';
   }
 
-  // Try to fit the pitch between the title and the URL.
-  let pitchBlock = '';
-  if (pitchText) {
-    const usedSoFar = baseOverhead + titleSafe.length;
-    const remaining = MAX - usedSoFar; // what's left after title + fixed stuff
-    // Need at least SEP + ~40 chars to bother showing a pitch line.
-    if (remaining >= SEP.length + 40) {
-      const pitchBudget = remaining - SEP.length;
-      let p = pitchText;
-      if (p.length > pitchBudget) {
-        p = p.slice(0, Math.max(0, pitchBudget - 1)).trimEnd() + '…';
-      }
-      pitchBlock = SEP + p;
-    }
-  }
-
-  return `${PREFIX}${SEP}${titleSafe}${pitchBlock}${SEP}${cardUrl}`;
+  return `${prefix}${SEP}${titleSafe}${SEP}${cardUrl}`;
 }
 
 // Verify a plaintext delete token against the stored SHA-256 hash for a
@@ -508,6 +519,7 @@ function hydrate(row) {
   for (const c of jsonCols) row[c] = parseJson(row[c], []);
   row.tool_use = row.tool_use == null ? null : !!row.tool_use;
   row.rag = row.rag == null ? null : !!row.rag;
+  row.multi_agent = row.multi_agent == null ? null : !!row.multi_agent;
   row.verified = !!row.verified;
   row.featured = !!row.featured;
   delete row.delete_token_hash;
@@ -821,6 +833,23 @@ app.post('/api/submissions', smallJson, submitLimiter, submitLimiterDaily, (req,
   // genuinely different agents while still making spam swarms expensive
   // (each extra card requires burning a real Twitter handle). After a
   // legit delete the row is gone, so slots free up naturally.
+  // Duplicate guard: reject if the same handle already posted an agent
+  // with the same title (case-insensitive). Prevents accidental re-submits.
+  const existingDupe = db
+    .prepare(
+      `SELECT id FROM submissions
+       WHERE LOWER(twitter_handle) = LOWER(?) AND LOWER(title) = LOWER(?)
+       LIMIT 1`
+    )
+    .get(normalizedHandle, title);
+  if (existingDupe) {
+    return res.status(409).json({
+      error: `You already have an agent called "${title}" on DiscoverHermes. Use PATCH to update it instead of re-submitting.`,
+      existing_id: existingDupe.id,
+      existing_url: `/use-cases/${existingDupe.id}`,
+    });
+  }
+
   const existingForHandle = db
     .prepare(
       `SELECT id, title FROM submissions
@@ -973,7 +1002,7 @@ app.post('/api/submissions', smallJson, submitLimiter, submitLimiterDaily, (req,
   // counts any URL in the text as 23 chars via t.co. Always include the prefix,
   // the title, and the card URL; fit the pitch in between only if there's room.
   const cardUrl = `${PUBLIC_URL}/use-cases/${inserted.id}`;
-  hydrated.share_tweet_url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(buildShareTweet(title, pitch, cardUrl))}`;
+  hydrated.share_tweet_url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(buildShareTweet(title, pitch, cardUrl, null))}`;
 
   res.status(201).json(hydrated);
 });
@@ -1012,7 +1041,7 @@ app.delete('/api/submissions/:id', mutationLimiter, (req, res) => {
 // letting it mutate would defeat the one-card-per-handle rule.
 const EDITABLE_FIELDS = new Set([
   'title', 'pitch', 'story', 'image_url', 'image_prompt',
-  'display_name', 'website', 'agent_framework', 'twitter_handle',
+  'display_name', 'website', 'agent_framework',
   'total_interactions', 'active_users', 'tasks_completed',
   'runs_completed', 'hours_used', 'tokens_total', 'time_saved_per_week',
   // v6.2: New scoring signals
@@ -1150,10 +1179,20 @@ app.patch('/api/submissions/:id', smallJson, mutationLimiter, (req, res) => {
     patch.agent_framework = clean(patch.agent_framework, 40) || null;
   }
   // Numeric metric fields — agents can PATCH these to keep stats fresh
-  for (const numField of ['total_interactions', 'active_users', 'tasks_completed', 'runs_completed', 'hours_used', 'tokens_total', 'time_saved_per_week']) {
+  for (const numField of ['total_interactions', 'active_users', 'tasks_completed', 'runs_completed', 'hours_used', 'tokens_total', 'time_saved_per_week', 'error_rate']) {
     if (numField in patch) {
       patch[numField] = cleanInt(patch[numField], 1_000_000_000_000);
     }
+  }
+  if ('error_rate' in patch) {
+    patch.error_rate = Math.min(patch.error_rate || 0, 100);
+  }
+  if ('multi_agent' in patch) {
+    patch.multi_agent = cleanBool(patch.multi_agent);
+  }
+  if ('output_format' in patch) {
+    const validFormats = ['structured-data','natural-language','code','mixed'];
+    patch.output_format = validFormats.includes(patch.output_format) ? patch.output_format : null;
   }
 
   // Safety scan across any free-text edits, same as POST.
@@ -1304,6 +1343,15 @@ app.get('/api/submissions/:id', (req, res) => {
   hydrated.total_agents = totalAgentsRow?.n ?? null;
   hydrated.total_scored = totalScoredRow?.n ?? null;
 
+  // Site averages for comparison on the score history chart
+  const avgRow = db.prepare(
+    `SELECT ROUND(AVG(ai_score), 1) AS avg_score,
+            ROUND(AVG(likes - COALESCE(dislikes, 0)), 1) AS avg_likes
+     FROM submissions WHERE approved = 1 AND ai_score IS NOT NULL`
+  ).get();
+  hydrated.site_avg_score = avgRow?.avg_score ?? null;
+  hydrated.site_avg_likes = avgRow?.avg_likes ?? null;
+
   const token = typeof req.query.token === 'string' ? req.query.token : null;
   if (token && verifyDeleteToken(id, token)) {
     hydrated.pending_updates = db.prepare(
@@ -1318,11 +1366,39 @@ app.get('/api/submissions/:id', (req, res) => {
     hydrated.is_author = false;
   }
 
+  // Score history for sparkline graph (last 30 data points)
+  hydrated.score_history = db.prepare(`
+    SELECT ai_score, likes, dislikes, recorded_at
+    FROM score_history
+    WHERE submission_id = ?
+    ORDER BY recorded_at ASC
+    LIMIT 30
+  `).all(id);
+
+  // Snapshot current state if last snapshot is > 24h old (avoids flooding)
+  const lastSnap = db.prepare(`
+    SELECT recorded_at FROM score_history
+    WHERE submission_id = ? ORDER BY recorded_at DESC LIMIT 1
+  `).get(id);
+  const snapAge = lastSnap ? Date.now() - new Date(lastSnap.recorded_at).getTime() : Infinity;
+  if (snapAge > 24 * 60 * 60 * 1000 && hydrated.ai_score != null) {
+    db.prepare(`
+      INSERT INTO score_history (submission_id, ai_score, likes, dislikes)
+      VALUES (?, ?, ?, ?)
+    `).run(id, hydrated.ai_score, hydrated.likes || 0, hydrated.dislikes || 0);
+    hydrated.score_history.push({
+      ai_score: hydrated.ai_score,
+      likes: hydrated.likes || 0,
+      dislikes: hydrated.dislikes || 0,
+      recorded_at: new Date().toISOString(),
+    });
+  }
+
   // Pre-built share link so the detail page share button works without
   // any client-side tweet assembly. Same helper as the submission insert.
   const cardUrl = `${PUBLIC_URL}/use-cases/${id}`;
   hydrated.share_tweet_url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(
-    buildShareTweet(hydrated.title, hydrated.pitch, cardUrl)
+    buildShareTweet(hydrated.title, hydrated.pitch, cardUrl, hydrated.ai_score)
   )}`;
 
   res.json(hydrated);
@@ -1658,6 +1734,7 @@ function maybeSnapshotDailyTotals() {
 // ---------- stats: aggregates for dashboard ----------
 app.get('/api/stats', (_req, res) => {
   maybeSnapshotDailyTotals();
+  maybeRefreshGitHubStats();
   const one = (sql, ...p) => db.prepare(sql).get(...p);
   const many = (sql, ...p) => db.prepare(sql).all(...p);
 
@@ -1701,6 +1778,18 @@ app.get('/api/stats', (_req, res) => {
     models_in_use:
       one(`SELECT COUNT(DISTINCT model) AS n
            FROM submissions WHERE approved = 1 AND model IS NOT NULL AND model != ''`).n,
+    avg_ai_score:
+      one(`SELECT ROUND(AVG(ai_score), 1) AS n
+           FROM submissions WHERE approved = 1 AND ai_score IS NOT NULL`).n || 0,
+    top_ai_score:
+      one(`SELECT ROUND(MAX(ai_score), 1) AS n
+           FROM submissions WHERE approved = 1 AND ai_score IS NOT NULL`).n || 0,
+    top_ai_score_id:
+      (one(`SELECT id FROM submissions WHERE approved = 1 AND ai_score IS NOT NULL ORDER BY ai_score DESC LIMIT 1`) || {}).id || null,
+    top_likes:
+      one(`SELECT COALESCE(MAX(likes), 0) AS n FROM submissions WHERE approved = 1`).n,
+    top_likes_id:
+      (one(`SELECT id FROM submissions WHERE approved = 1 ORDER BY likes DESC LIMIT 1`) || {}).id || null,
   };
 
   // Daily new submissions across ALL time — we'll slice the last 30 for
@@ -1777,6 +1866,21 @@ app.get('/api/stats', (_req, res) => {
     by_plugin:       groupArray('plugins'),
     tool_use:        boolDist('tool_use'),
     rag:             boolDist('rag'),
+    score_distribution: many(
+      `SELECT
+         CASE
+           WHEN ai_score >= 80 THEN '80-100 (S/A)'
+           WHEN ai_score >= 60 THEN '60-79 (B)'
+           WHEN ai_score >= 40 THEN '40-59 (C)'
+           WHEN ai_score >= 20 THEN '20-39 (D)'
+           ELSE '0-19'
+         END AS label,
+         COUNT(*) AS count
+       FROM submissions
+       WHERE approved = 1 AND ai_score IS NOT NULL
+       GROUP BY label
+       ORDER BY MIN(ai_score) ASC`
+    ),
     daily,
     cumulative,
     cumulative_tokens: cumulativeTokens,
@@ -1788,57 +1892,69 @@ app.get('/api/stats', (_req, res) => {
   });
 });
 
-// ---------- admin: update github stats ----------
-// POST /api/admin/github-stats with x-admin-token
-// Fetches from star-history.com and saves daily snapshot
+// ---------- github stats: auto-refresh daily ----------
+// Shared fetch logic used by both the daily auto-pull and the admin endpoint.
+async function refreshGitHubStats() {
+  const resp = await fetch('https://www.star-history.com/nousresearch/hermes-agent', {
+    headers: { 'User-Agent': 'DiscoverHermes/1.0' },
+  });
+  if (!resp.ok) throw new Error(`star-history returned ${resp.status}`);
+  const html = await resp.text();
+
+  const parseK = (m) => m ? Math.round(parseFloat(m[1]) * 1000) : 0;
+  const starsMatch = html.match(/([\d.]+)k\s*Stars/i);
+  const forksMatch = html.match(/([\d.]+)k\s*Forks/i);
+  const contributorsMatch = html.match(/(\d+)\s*Contributors/i);
+  const rankMatch = html.match(/Global Rank\s*#(\d+)/i) || html.match(/#(\d+)\s*hermes-agent/i);
+  const weeklyStarsMatch = html.match(/New stars\s*\+?([\d.]+k)/i) || html.match(/\+([\d.]+k)\s*stars/i);
+  const pushesMatch = html.match(/(\d+)\s*Pushes/i);
+  const issuesMatch = html.match(/Issues closed\s*(\d+)/i);
+
+  const stats = {
+    stars: parseK(starsMatch),
+    forks: parseK(forksMatch),
+    contributors: contributorsMatch ? parseInt(contributorsMatch[1]) : 0,
+    global_rank: rankMatch ? parseInt(rankMatch[1]) : null,
+    weekly_stars: parseK(weeklyStarsMatch),
+    weekly_pushes: pushesMatch ? parseInt(pushesMatch[1]) : 0,
+    weekly_issues_closed: issuesMatch ? parseInt(issuesMatch[1]) : 0,
+  };
+
+  const today = new Date().toISOString().slice(0, 10);
+  db.prepare(`
+    INSERT OR REPLACE INTO github_stats
+      (date, stars, forks, contributors, global_rank, weekly_stars, weekly_pushes, weekly_issues_closed)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(today, stats.stars, stats.forks, stats.contributors, stats.global_rank,
+         stats.weekly_stars, stats.weekly_pushes, stats.weekly_issues_closed);
+
+  return { date: today, ...stats };
+}
+
+// Lazy daily auto-refresh: on first /api/stats request each day, if today's
+// github_stats row doesn't exist yet, fetch fresh data in the background.
+let _ghRefreshPromise = null;
+function maybeRefreshGitHubStats() {
+  const today = new Date().toISOString().slice(0, 10);
+  const existing = db.prepare('SELECT 1 FROM github_stats WHERE date = ?').get(today);
+  if (existing) return;
+  // Only one in-flight refresh at a time
+  if (_ghRefreshPromise) return;
+  _ghRefreshPromise = refreshGitHubStats()
+    .then((s) => console.log(`[github-stats] auto-refreshed: ${s.stars} stars, #${s.global_rank}`))
+    .catch((err) => console.error('[github-stats] auto-refresh failed:', err.message))
+    .finally(() => { _ghRefreshPromise = null; });
+}
+
+// Admin endpoint: force-refresh (still useful for manual triggers)
 app.post('/api/admin/github-stats', smallJson, async (req, res) => {
   const auth = req.get('x-admin-token') || req.query.token || (req.body && req.body.token);
   if (!ADMIN_TOKEN || auth !== ADMIN_TOKEN) {
     return res.status(401).json({ error: 'unauthorized' });
   }
-
   try {
-    // Fetch star-history page (use global fetch in Node 18+)
-    const resp = await fetch('https://www.star-history.com/nousresearch/hermes-agent', {
-      headers: { 'User-Agent': 'DiscoverHermes/1.0' }
-    });
-    if (!resp.ok) {
-      return res.status(502).json({ error: 'failed to fetch star-history', status: resp.status });
-    }
-    const html = await resp.text();
-
-    // Parse star-history page for stats
-    const parseK = (m) => m ? Math.round(parseFloat(m[1]) * 1000) : 0;
-
-    // Extract stats using regex - patterns match star-history.com page structure
-    // The sidebar shows: "48.2k Stars #421 Global Rank 6.2k Forks 286 Contributors"
-    const starsMatch = html.match(/([\d.]+)k\s*Stars/i);
-    const forksMatch = html.match(/([\d.]+)k\s*Forks/i);
-    const contributorsMatch = html.match(/(\d+)\s*Contributors/i);
-    const rankMatch = html.match(/Global Rank\s*#(\d+)/i) || html.match(/#(\d+)\s*hermes-agent/i);
-    const weeklyStarsMatch = html.match(/New stars\s*\+?([\d.]+k)/i) || html.match(/\+([\d.]+k)\s*stars/i);
-    const pushesMatch = html.match(/(\d+)\s*Pushes/i);
-    const issuesMatch = html.match(/Issues closed\s*(\d+)/i);
-
-    const stats = {
-      stars: parseK(starsMatch),
-      forks: parseK(forksMatch),
-      contributors: contributorsMatch ? parseInt(contributorsMatch[1]) : 0,
-      global_rank: rankMatch ? parseInt(rankMatch[1]) : null,
-      weekly_stars: parseK(weeklyStarsMatch),
-      weekly_pushes: pushesMatch ? parseInt(pushesMatch[1]) : 0,
-      weekly_issues_closed: issuesMatch ? parseInt(issuesMatch[1]) : 0,
-    };
-
-    const today = new Date().toISOString().slice(0, 10);
-    db.prepare(`
-      INSERT OR REPLACE INTO github_stats
-        (date, stars, forks, contributors, global_rank, weekly_stars, weekly_pushes, weekly_issues_closed)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(today, stats.stars, stats.forks, stats.contributors, stats.global_rank,
-           stats.weekly_stars, stats.weekly_pushes, stats.weekly_issues_closed);
-
-    res.json({ ok: true, date: today, ...stats });
+    const stats = await refreshGitHubStats();
+    res.json({ ok: true, ...stats });
   } catch (err) {
     console.error('github-stats error:', err);
     res.status(500).json({ error: 'internal error', message: err.message });
@@ -1914,7 +2030,15 @@ app.patch('/api/submissions/:id/score', smallJson, (req, res) => {
   `).run(aiScore, aiGrade, aiScorePending, aiRationale, featured, featuredReason, now, id);
   if (info.changes === 0) return res.status(404).json({ error: 'not found' });
 
+  // Log score history for the sparkline graph
   const row = db.prepare('SELECT * FROM submissions WHERE id = ?').get(id);
+  if (row && row.ai_score != null) {
+    db.prepare(`
+      INSERT INTO score_history (submission_id, ai_score, likes, dislikes, recorded_at)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(id, row.ai_score, row.likes || 0, row.dislikes || 0, now);
+  }
+
   res.json(hydrate(row));
 });
 
@@ -1966,6 +2090,148 @@ app.get('/api/featured', (req, res) => {
   res.json(rows.map(hydrate));
 });
 
+// GET /api/activity — recent site activity feed for the homepage ticker
+app.get('/api/activity', (_req, res) => {
+  try {
+    const submitted = db.prepare(`
+      SELECT id, title, display_name, twitter_handle, created_at
+      FROM submissions WHERE approved = 1
+      ORDER BY created_at DESC LIMIT 5
+    `).all().map(r => ({
+      type: 'submitted',
+      text: `@${r.twitter_handle || r.display_name || 'someone'} submitted ${r.title}`,
+      url: `/use-cases/${r.id}`,
+      timestamp: r.created_at
+    }));
+
+    const scored = db.prepare(`
+      SELECT id, title, ai_score, ai_grade, last_reviewed_at
+      FROM submissions WHERE approved = 1 AND ai_score IS NOT NULL
+      ORDER BY last_reviewed_at DESC LIMIT 5
+    `).all().map(r => ({
+      type: 'scored',
+      text: `${r.title} scored ${Math.round(r.ai_score)}/100 (Grade ${r.ai_grade || '?'})`,
+      url: `/use-cases/${r.id}`,
+      timestamp: r.last_reviewed_at
+    }));
+
+    const commented = db.prepare(`
+      SELECT sc.twitter_handle, sc.display_name, sc.created_at,
+             s.id AS submission_id, s.title
+      FROM submission_comments sc
+      JOIN submissions s ON sc.submission_id = s.id
+      ORDER BY sc.created_at DESC LIMIT 5
+    `).all().map(r => ({
+      type: 'commented',
+      text: `${r.display_name || r.twitter_handle || 'someone'} commented on ${r.title}`,
+      url: `/use-cases/${r.submission_id}`,
+      timestamp: r.created_at
+    }));
+
+    const trending = db.prepare(`
+      SELECT id, title, likes
+      FROM submissions WHERE approved = 1 AND likes > 0
+      ORDER BY likes DESC LIMIT 5
+    `).all().map(r => ({
+      type: 'trending',
+      text: `${r.title} is trending with ${r.likes} likes`,
+      url: `/use-cases/${r.id}`,
+      timestamp: null
+    }));
+
+    const merged = [...submitted, ...scored, ...commented, ...trending]
+      .sort((a, b) => {
+        if (!a.timestamp && !b.timestamp) return 0;
+        if (!a.timestamp) return 1;
+        if (!b.timestamp) return -1;
+        return new Date(b.timestamp) - new Date(a.timestamp);
+      })
+      .slice(0, 20);
+
+    res.json(merged);
+  } catch (err) {
+    console.error('/api/activity error:', err);
+    res.status(500).json({ error: 'failed to load activity' });
+  }
+});
+
+// GET /api/badge/:id.svg — dynamic SVG badge showing AI score, grade, rank.
+// Embeddable in GitHub READMEs, docs, websites. Cached for 5 minutes.
+app.get('/api/badge/:id.svg', (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return res.status(400).type('text/plain').send('invalid id');
+  const row = db.prepare(
+    'SELECT title, ai_score, ai_grade, likes, dislikes FROM submissions WHERE id = ? AND approved = 1'
+  ).get(id);
+  if (!row) return res.status(404).type('text/plain').send('not found');
+
+  const score = row.ai_score != null ? Math.round(row.ai_score) : null;
+  const grade = row.ai_grade || null;
+  const netLikes = (row.likes || 0) - (row.dislikes || 0);
+
+  // Rank among scored agents
+  let rankText = '';
+  if (score != null) {
+    const rankRow = db.prepare(
+      'SELECT 1 + COUNT(*) AS rank FROM submissions WHERE approved = 1 AND ai_score > ?'
+    ).get(score);
+    const totalRow = db.prepare(
+      'SELECT COUNT(*) AS n FROM submissions WHERE approved = 1 AND ai_score IS NOT NULL'
+    ).get();
+    rankText = `#${rankRow.rank} of ${totalRow.n}`;
+  }
+
+  // Build label segments: "DiscoverHermes | AI Score: 87 (A) | #3 of 50 | ♥ 12"
+  const segments = ['DiscoverHermes'];
+  if (score != null) {
+    segments.push(`AI Score: ${score}` + (grade ? ` (${grade})` : ''));
+  } else {
+    segments.push('Unscored');
+  }
+  if (rankText) segments.push(rankText);
+  if (netLikes > 0) segments.push(`\u2665 ${netLikes}`);
+
+  // Grade → color mapping
+  const gradeColors = {
+    S: '#f59e0b', A: '#22c55e', B: '#3b82f6', C: '#a78bfa', D: '#94a3b8'
+  };
+  const accentColor = gradeColors[grade] || '#f97316';
+
+  // Measure segment widths (approximate: 6.8px per char at 11px font)
+  const charW = 6.8;
+  const segPad = 10; // padding inside each segment
+  const segGap = 1;  // gap between segments
+  const widths = segments.map(s => Math.ceil(s.length * charW + segPad * 2));
+  const totalW = widths.reduce((a, b) => a + b, 0) + segGap * (segments.length - 1);
+  const h = 22;
+
+  // Build SVG
+  let x = 0;
+  let rects = '';
+  let texts = '';
+  segments.forEach((seg, i) => {
+    const w = widths[i];
+    const bg = i === 0 ? '#2d2d2d' : '#3d3d3d';
+    const fill = i === 0 ? '#ccc' : '#fff';
+    const r = i === 0 ? 'rx="4" ry="4"' : (i === segments.length - 1 ? 'rx="4" ry="4"' : '');
+    rects += `<rect x="${x}" y="0" width="${w}" height="${h}" fill="${bg}" ${r}/>`;
+    texts += `<text x="${x + w / 2}" y="15" fill="${fill}" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" font-size="11" text-anchor="middle">${seg.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</text>`;
+    x += w + segGap;
+  });
+  // Accent bar at bottom
+  rects += `<rect x="0" y="${h - 3}" width="${totalW}" height="3" fill="${accentColor}" rx="0" ry="0" opacity="0.7"/>`;
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${totalW}" height="${h}" role="img" aria-label="${segments.join(' | ')}">
+  <title>${segments.join(' | ')}</title>
+  ${rects}
+  ${texts}
+</svg>`;
+
+  res.set('Content-Type', 'image/svg+xml');
+  res.set('Cache-Control', 'public, max-age=300');
+  res.send(svg);
+});
+
 // ---------- agent shortcut ----------
 // GET /submit/agent — returns the raw submission prompt as plain text so
 // a Hermes agent that visits this URL can immediately read and follow it.
@@ -2003,6 +2269,7 @@ app.get('/submit/agent', (_req, res) => {
 app.get('/submit', serveHtml('submit.html'));
 app.get('/stats', serveHtml('stats.html'));
 app.get('/rankings', serveHtml('rankings.html'));
+app.get('/ecosystem', serveHtml('ecosystem.html'));
 // Detail page with dynamic OG meta tags — so sharing an agent link on
 // Twitter/Discord shows that agent's image, title, and pitch instead of
 // generic DiscoverHermes branding.

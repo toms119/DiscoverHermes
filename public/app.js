@@ -22,6 +22,13 @@
     })[c]);
   }
 
+  function fmtDate(d) {
+    if (!d) return '';
+    const dt = new Date(d);
+    if (isNaN(dt)) return d;
+    return dt.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+  }
+
   function fmtNumber(n) {
     if (n == null || Number.isNaN(Number(n))) return '—';
     n = Number(n);
@@ -103,6 +110,21 @@
       el.querySelectorAll('[data-stat]').forEach((node) => {
         const key = node.dataset.stat;
         node.textContent = fmtNumber(data.totals[key]);
+      });
+      // Make top AI score and most liked stats link to those agents
+      [['top_ai_score', 'top_ai_score_id'], ['top_likes', 'top_likes_id']].forEach(([stat, idKey]) => {
+        const agentId = data.totals[idKey];
+        if (!agentId) return;
+        const node = el.querySelector('[data-stat="' + stat + '"]');
+        if (!node) return;
+        const wrapper = node.closest('.headline-stat');
+        if (wrapper && !wrapper.dataset.linked) {
+          wrapper.dataset.linked = '1';
+          wrapper.style.cursor = 'pointer';
+          wrapper.addEventListener('click', () => {
+            location.href = '/use-cases/' + agentId;
+          });
+        }
       });
       return data;
     } catch {
@@ -321,7 +343,7 @@
     if (item.model) chips.push(['model', item.model]);
     else if (item.platform) chips.push(['platform', item.platform]);
     if (item.time_saved_per_week) chips.push(['hours', `${item.time_saved_per_week}h/wk saved`]);
-    else if (item.runs_completed) chips.push(['runs', `${fmtNum(item.runs_completed)} runs`]);
+    else if (item.runs_completed) chips.push(['runs', `${fmtNum(item.runs_completed)} agent sessions`]);
     if (item.deployment) chips.push(['deployment', item.deployment]);
     return chips
       .slice(0, 4)
@@ -347,6 +369,7 @@
     // clicked a "Pinecone" chip on a detail page and landed on /?integration=Pinecone.
     const initialParams = new URLSearchParams(location.search);
     const PAGE_SIZE = 24;
+    let feedViewMode = 'grid';
     const state = {
       sort:        'trending',
       category:    '',
@@ -382,7 +405,7 @@
       else if (item._aiPct != null && item._aiPct <= 10) badges.push('<span class="achiev" title="Top 10% AI score">✨ Elite</span>');
       // Absolute metrics (still valuable signals)
       if (item.time_saved_per_week >= 10) badges.push('<span class="achiev" title="Saves 10+ hours/week">⚡ Time Saver</span>');
-      if (item.runs_completed >= 500) badges.push('<span class="achiev" title="500+ runs completed">🏆 Powerhouse</span>');
+      if (item.runs_completed >= 500) badges.push('<span class="achiev" title="500+ agent sessions completed">🏆 Powerhouse</span>');
       if (item.approx_monthly_tokens >= 1000000) badges.push('<span class="achiev" title="1M+ tokens/month">🧠 Token Beast</span>');
       return badges.slice(0, 2).join('');
     }
@@ -435,6 +458,31 @@
         </div>`;
     }
 
+    function feedListRow(item) {
+      const scoreDisplay = item.ai_score != null
+        ? (Number.isInteger(item.ai_score) ? item.ai_score : item.ai_score.toFixed(1))
+        : null;
+      const aiPill = scoreDisplay
+        ? `<span class="card-ai-score"><span class="card-ai-num">${scoreDisplay}</span> AI</span>`
+        : '';
+      const img = item.image_url
+        ? `<img class="feed-row-img" src="${escapeHtml(item.image_url)}" alt="" />`
+        : `<div class="feed-row-img feed-row-placeholder">◆</div>`;
+      const author = escapeHtml(item.twitter_handle ? '@' + item.twitter_handle : item.display_name || '');
+      return `
+        <div class="feed-row" data-href="/use-cases/${item.id}" data-id="${item.id}">
+          ${img}
+          <div class="feed-row-body">
+            <span class="feed-row-title">${escapeHtml(item.title)}</span>
+            <span class="feed-row-author">${author}</span>
+          </div>
+          <div class="feed-row-scores">
+            ${aiPill}
+            ${likeBtnHtml(item)}
+          </div>
+        </div>`;
+    }
+
     // Shows a dismissible pill when the feed is pre-filtered via a chip
     // deep-link (e.g. ?integration=Pinecone), so the visitor can tell why
     // they're only seeing a subset and can clear it with one click.
@@ -472,15 +520,27 @@
       if (isFirstPage) {
         // Skeleton loading cards — shimmer while the API responds
         feedEl.classList.remove('feed-loaded');
-        feedEl.innerHTML = Array.from({ length: 6 }, () => `
-          <div class="card skeleton">
-            <div class="card-media skeleton-shimmer"></div>
-            <div class="card-body">
-              <div class="skeleton-line" style="width:80%"></div>
-              <div class="skeleton-line" style="width:60%"></div>
-              <div class="skeleton-line short" style="width:40%"></div>
-            </div>
-          </div>`).join('');
+        // Re-sync view mode class before rendering skeletons
+        if (feedViewMode === 'list') {
+          feedEl.classList.add('feed-list');
+        } else {
+          feedEl.classList.remove('feed-list');
+        }
+        if (feedViewMode === 'list') {
+          feedEl.innerHTML = Array.from({ length: 8 }, () =>
+            `<div class="feed-row skeleton"><div class="feed-row-img feed-row-placeholder skeleton-shimmer"></div><div class="feed-row-body"><div class="skeleton-line" style="width:60%"></div><div class="skeleton-line short" style="width:30%"></div></div></div>`
+          ).join('');
+        } else {
+          feedEl.innerHTML = Array.from({ length: 6 }, () => `
+            <div class="card skeleton">
+              <div class="card-media skeleton-shimmer"></div>
+              <div class="card-body">
+                <div class="skeleton-line" style="width:80%"></div>
+                <div class="skeleton-line" style="width:60%"></div>
+                <div class="skeleton-line short" style="width:40%"></div>
+              </div>
+            </div>`).join('');
+        }
         renderFilterBanner();
       }
 
@@ -541,6 +601,7 @@
         }
 
         const cardsHtml = items.map((item, i) => {
+          if (feedViewMode === 'list') return feedListRow(item);
           const extra = trendingIds.has(item.id) ? 'is-trending' : '';
           const idx = state.offset + i;
           return cardHtml(item, extra).replace('<div class="card', `<div style="--i:${idx % PAGE_SIZE}" class="card`);
@@ -555,6 +616,12 @@
           feedEl.insertAdjacentHTML('beforeend', cardsHtml);
         }
         feedEl.classList.add('feed-loaded');
+        // Defensive: always re-sync view mode class after render
+        if (feedViewMode === 'list') {
+          feedEl.classList.add('feed-list');
+        } else {
+          feedEl.classList.remove('feed-list');
+        }
 
         // Append sentinel for infinite scroll if more pages exist
         if (!state.allLoaded) {
@@ -603,13 +670,10 @@
       toggleDislike(Number(btn.dataset.id), btn);
     });
 
-    // Card click — navigate to detail page.
-    // Cards are <div> (not <a>) to avoid invalid nested-anchor HTML which
-    // breaks DOM rendering.  We delegate clicks here instead.
+    // Card/row click — navigate to detail page.
     feedEl.addEventListener('click', (e) => {
-      // Skip if the click was on an interactive child (link, button)
       if (e.target.closest('a') || e.target.closest('button')) return;
-      const card = e.target.closest('.card[data-href]');
+      const card = e.target.closest('.card[data-href], .feed-row[data-href]');
       if (card) window.location.href = card.dataset.href;
     });
 
@@ -642,10 +706,16 @@
         }, 1200);
       });
 
-      feedEl.addEventListener('mouseleave', (e) => {
-        const media = e.target.closest('.card-media[data-gallery]');
-        if (media === hoverMedia) stopCycle();
-      }, true);
+      feedEl.addEventListener('mouseleave', () => {
+        if (hoverMedia) stopCycle();
+      });
+      feedEl.addEventListener('mouseout', (e) => {
+        if (!hoverMedia) return;
+        const related = e.relatedTarget;
+        if (related && hoverMedia.contains(related)) return;
+        if (related && related.closest && related.closest('.card-media[data-gallery]') === hoverMedia) return;
+        stopCycle();
+      });
 
       function stopCycle() {
         if (hoverTimer) clearInterval(hoverTimer);
@@ -662,6 +732,31 @@
         hoverIdx = 0;
       }
     })();
+
+    // Feed view toggle (grid / list)
+    // Sync initial class to match default feedViewMode
+    feedEl.classList.remove('feed-list');
+    const feedToggle = document.getElementById('feed-view-toggle');
+    if (feedToggle) {
+      feedToggle.querySelectorAll('.view-toggle-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          var mode = btn.dataset.mode;
+          if (mode === feedViewMode) return;
+          feedViewMode = mode;
+          feedToggle.querySelectorAll('.view-toggle-btn').forEach((b) => {
+            b.classList.toggle('active', b.dataset.mode === feedViewMode);
+          });
+          // Apply class BEFORE clearing/reloading
+          feedEl.classList.remove('feed-list');
+          if (feedViewMode === 'list') feedEl.classList.add('feed-list');
+          // Full reset
+          state.offset = 0;
+          state.allLoaded = false;
+          feedEl.innerHTML = '<div class="loading">Loading\u2026</div>';
+          loadFeed();
+        });
+      });
+    }
 
     // Sort tabs — only tabs that actually have a data-sort value.
     // The verified toggle shares the .tab class for visual consistency
@@ -720,19 +815,16 @@
     // the feed. When there are more than 6 populated categories, the
     // overflow tucks behind a "More ↓" toggle.
     const catRow = document.getElementById('category-filters');
-    const VISIBLE_CAP = 6;
     fetch('/api/meta').then((r) => r.json()).then((meta) => {
       const populated = Array.isArray(meta.category_counts) ? meta.category_counts : [];
-      // Hide the whole row if nothing is populated yet — no point rendering
-      // just an "All" pill with nothing to filter to.
       if (populated.length === 0) {
         catRow.style.display = 'none';
         return;
       }
 
-      function makePill(name, count, cls = 'pill') {
+      function makePill(name, count) {
         const btn = document.createElement('button');
-        btn.className = cls;
+        btn.className = 'pill';
         btn.dataset.category = name || '';
         btn.innerHTML = name
           ? `${escapeHtml(name)}<span class="pill-count">${count}</span>`
@@ -740,36 +832,25 @@
         return btn;
       }
 
-      // "All" is always first and always active on load.
       const allBtn = makePill('', 0);
       allBtn.classList.add('active');
       catRow.appendChild(allBtn);
+      populated.forEach((c) => catRow.appendChild(makePill(c.name, c.count)));
 
-      const visible = populated.slice(0, VISIBLE_CAP);
-      const overflow = populated.slice(VISIBLE_CAP);
-      visible.forEach((c) => catRow.appendChild(makePill(c.name, c.count)));
-
-      // Overflow toggle — only if there's something to hide.
-      if (overflow.length > 0) {
+      // "More" toggle — expands the single row to show all categories
+      if (populated.length > 4) {
         const moreBtn = document.createElement('button');
         moreBtn.className = 'pill pill-more';
         moreBtn.type = 'button';
-        moreBtn.textContent = `More (${overflow.length}) ↓`;
+        moreBtn.textContent = 'All categories ↓';
+        moreBtn.style.flexShrink = '0';
         catRow.appendChild(moreBtn);
 
-        const hiddenPills = overflow.map((c) => {
-          const pill = makePill(c.name, c.count, 'pill pill-hidden');
-          catRow.appendChild(pill);
-          return pill;
-        });
-
         moreBtn.addEventListener('click', () => {
-          const nowOpen = !moreBtn.classList.contains('open');
+          const nowOpen = !catRow.classList.contains('pill-row-expanded');
+          catRow.classList.toggle('pill-row-expanded', nowOpen);
           moreBtn.classList.toggle('open', nowOpen);
-          hiddenPills.forEach((p) => p.classList.toggle('pill-hidden', !nowOpen));
-          moreBtn.textContent = nowOpen
-            ? 'Less ↑'
-            : `More (${overflow.length}) ↓`;
+          moreBtn.textContent = nowOpen ? 'Less ↑' : 'All categories ↓';
         });
       }
 
@@ -831,7 +912,7 @@
           const items = await res.json();
           if (!Array.isArray(items) || items.length === 0) return;
           const knownIds = new Set(
-            [...feedEl.querySelectorAll('.card[data-id]')].map((n) => Number(n.dataset.id))
+            [...feedEl.querySelectorAll('[data-id]')].map((n) => Number(n.dataset.id))
           );
           const fresh = items.filter((it) => !knownIds.has(Number(it.id)));
           if (fresh.length === 0) return;
@@ -844,7 +925,7 @@
           // Prepend in reverse so the newest item ends up on top.
           for (const item of fresh.reverse()) {
             const wrapper = document.createElement('div');
-            wrapper.innerHTML = cardHtml(item, 'just-arrived');
+            wrapper.innerHTML = feedViewMode === 'list' ? feedListRow(item) : cardHtml(item, 'just-arrived');
             const node = wrapper.firstElementChild;
             if (node) feedEl.insertBefore(node, feedEl.firstChild);
           }
@@ -883,6 +964,7 @@
     startLivePoll();
     loadFeatured();
     loadSpotlight();
+    loadActivityFeed();
 
     // ---------- hero text cycling: Hermes → OpenClaw → IronClaw … ----------
     const heroFw = document.getElementById('hero-framework');
@@ -897,6 +979,106 @@
           heroFw.style.opacity = '1';
         }, 400);
       }, 3000);
+    }
+  }
+
+  // ==========================================================
+  // ACTIVITY FEED TICKER (feed page — independent pop-up slots)
+  // One single-line-height bar. 3 slots inside, each independently cycles
+  // through items on its own timer. Varied orange shades, no emojis.
+  // Names and numbers are bolded.
+  // ==========================================================
+  async function loadActivityFeed() {
+    var container = document.getElementById('activity-feed');
+    if (!container) return;
+    try {
+      var res = await fetch('/api/activity');
+      var items = await res.json();
+      if (!Array.isArray(items) || items.length === 0) return;
+
+      // Varied orange shade classes — each slot picks one per item
+      var shades = ['activity-shade-0','activity-shade-1','activity-shade-2','activity-shade-3','activity-shade-4'];
+
+      // Bold names and numbers. Also strip any leftover emoji codepoints.
+      function formatText(raw, type) {
+        // Strip emoji unicode (surrogate pairs + common emoji ranges)
+        var clean = raw.replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}\u{200D}\u{20E3}]/gu, '').trim();
+        var t = escapeHtml(clean);
+        // Bold @handles
+        t = t.replace(/@[\w]+/g, '<b>$&</b>');
+        // Bold the name/title portion based on activity type patterns
+        if (type === 'submitted') {
+          // "@handle submitted <title>" — bold the title after "submitted "
+          t = t.replace(/( submitted )(.+)$/, '$1<b>$2</b>');
+        } else if (type === 'scored') {
+          // "<title> scored ..." — bold title before " scored"
+          t = t.replace(/^(.+?)( scored )/, '<b>$1</b>$2');
+        } else if (type === 'commented') {
+          // "<name> commented on <title>" — bold name + title
+          t = t.replace(/^(.+?)( commented on )(.+)$/, '<b>$1</b>$2<b>$3</b>');
+        } else if (type === 'trending') {
+          // "<title> is trending with N likes" — bold title
+          t = t.replace(/^(.+?)( is trending)/, '<b>$1</b>$2');
+        }
+        // Bold numbers like "28/100", standalone digits, "Grade A+"
+        t = t.replace(/\d+\/\d+/g, '<b>$&</b>');
+        t = t.replace(/(?<![\/\w])(\b\d+\b)(?!\/)/g, '<b>$1</b>');
+        t = t.replace(/Grade\s+([A-F][+-]?|\?)/g, '<b>Grade $1</b>');
+        // Clean up any nested <b> tags
+        t = t.replace(/<b><b>/g, '<b>').replace(/<\/b><\/b>/g, '</b>');
+        return t;
+      }
+
+      // Create 2 independent slots
+      container.innerHTML = '<div class="activity-slot" id="aslot-0"></div>'
+        + '<div class="activity-slot" id="aslot-1"></div>';
+
+      // Render one item into a slot
+      function renderSlot(slot, item, shadeIdx) {
+        var shade = shades[shadeIdx % shades.length];
+        slot.innerHTML = '<a class="activity-item ' + shade + '" href="' + escapeHtml(item.url) + '">'
+          + '<span>' + formatText(item.text, item.type) + '</span>'
+          + '</a>';
+      }
+
+      // Pre-load both slots immediately so they're visible on first paint
+      var slotEls = [
+        document.getElementById('aslot-0'),
+        document.getElementById('aslot-1')
+      ];
+      var startOffsets = [0, Math.floor(items.length / 2)];
+      for (var s = 0; s < 2; s++) {
+        renderSlot(slotEls[s], items[startOffsets[s] % items.length], s);
+        slotEls[s].classList.add('slot-in');
+      }
+
+      // Each slot cycles independently after the initial display
+      function runSlot(slotId, startIdx, holdMs, pauseMs) {
+        var slot = slotEls[slotId];
+        if (!slot) return;
+        var idx = startIdx;
+        var shadeIdx = slotId;
+
+        function cycleNext() {
+          slot.classList.remove('slot-in');
+          slot.classList.add('slot-out');
+          setTimeout(function() {
+            idx = (idx + 1) % items.length;
+            shadeIdx++;
+            renderSlot(slot, items[idx], shadeIdx);
+            slot.classList.remove('slot-out');
+            slot.classList.add('slot-in');
+            setTimeout(cycleNext, holdMs);
+          }, pauseMs);
+        }
+        setTimeout(cycleNext, holdMs);
+      }
+
+      // 2 slots with different hold times so they drift apart
+      runSlot(0, startOffsets[0], 3400, 510);
+      runSlot(1, startOffsets[1], 4080, 595);
+    } catch (e) {
+      // silently ignore — ticker is non-critical
     }
   }
 
@@ -969,6 +1151,170 @@
   }
 
   // ==========================================================
+  // Score history chart — draws AI score + net likes over time on a canvas
+  function drawScoreHistory(canvas, item) {
+    const history = item.score_history || [];
+    const points = history.length > 0 ? history : (item.ai_score != null ? [{
+      ai_score: item.ai_score,
+      likes: item.likes || 0,
+      dislikes: item.dislikes || 0,
+      recorded_at: item.last_reviewed_at || item.created_at || new Date().toISOString(),
+    }] : []);
+    if (points.length === 0) { canvas.parentElement.style.display = 'none'; return; }
+
+    const siteAvgScore = item.site_avg_score;
+    const siteAvgLikes = item.site_avg_likes;
+
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+    const W = rect.width, H = rect.height;
+    const pad = { top: 36, right: 20, bottom: 32, left: 44 };
+    const plotW = W - pad.left - pad.right;
+    const plotH = H - pad.top - pad.bottom;
+
+    const aiScores = points.map(p => p.ai_score ?? null);
+    const netLikes = points.map(p => (p.likes || 0) - (p.dislikes || 0));
+    const dates = points.map(p => p.recorded_at);
+
+    const aiMax = 100;
+    const likeMax = Math.max(5, ...netLikes.map(Math.abs), Math.abs(siteAvgLikes || 0) + 2);
+    const likeMin = -likeMax;
+
+    const xFor = (i) => pad.left + (points.length === 1 ? plotW / 2 : (i / (points.length - 1)) * plotW);
+    const yAi = (v) => pad.top + (1 - v / aiMax) * plotH;
+    const yLike = (v) => pad.top + (1 - (v - likeMin) / (likeMax - likeMin)) * plotH;
+
+    // Background
+    ctx.fillStyle = 'rgba(255,255,255,0.03)';
+    ctx.fillRect(pad.left, pad.top, plotW, plotH);
+
+    // Grid lines
+    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= 4; i++) {
+      const y = pad.top + (i / 4) * plotH;
+      ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(W - pad.right, y); ctx.stroke();
+    }
+
+    // --- Site average reference lines (dashed) ---
+    if (siteAvgScore != null) {
+      const avgY = yAi(siteAvgScore);
+      ctx.save();
+      ctx.setLineDash([6, 4]);
+      ctx.strokeStyle = 'rgba(232, 131, 74, 0.4)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(pad.left, avgY); ctx.lineTo(W - pad.right, avgY); ctx.stroke();
+      ctx.restore();
+      ctx.fillStyle = 'rgba(232, 131, 74, 0.6)';
+      ctx.font = '10px -apple-system, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText(`avg ${siteAvgScore}`, pad.left + 4, avgY - 4);
+    }
+    if (siteAvgLikes != null) {
+      const avgY = yLike(siteAvgLikes);
+      ctx.save();
+      ctx.setLineDash([6, 4]);
+      ctx.strokeStyle = 'rgba(255, 64, 96, 0.35)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(pad.left, avgY); ctx.lineTo(W - pad.right, avgY); ctx.stroke();
+      ctx.restore();
+      ctx.fillStyle = 'rgba(255, 64, 96, 0.55)';
+      ctx.font = '10px -apple-system, sans-serif';
+      ctx.textAlign = 'right';
+      ctx.fillText(`avg ${siteAvgLikes}`, W - pad.right - 4, avgY - 4);
+    }
+
+    // --- Draw AI score line (orange) ---
+    const validAi = aiScores.some(v => v != null);
+    if (validAi) {
+      ctx.strokeStyle = '#e8834a';
+      ctx.lineWidth = 2.5;
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      let started = false;
+      aiScores.forEach((v, i) => {
+        if (v == null) return;
+        const x = xFor(i), y = yAi(v);
+        if (!started) { ctx.moveTo(x, y); started = true; }
+        else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+      // Dots + value labels
+      aiScores.forEach((v, i) => {
+        if (v == null) return;
+        const x = xFor(i), y = yAi(v);
+        ctx.fillStyle = '#e8834a';
+        ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.fill();
+        // White outline
+        ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.lineWidth = 1;
+        ctx.stroke();
+        // Value label
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 12px -apple-system, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(Number.isInteger(v) ? String(v) : v.toFixed(1), x, y - 10);
+      });
+    }
+
+    // --- Draw likes line (pink) ---
+    ctx.strokeStyle = '#ff4060';
+    ctx.lineWidth = 2;
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    netLikes.forEach((v, i) => {
+      const x = xFor(i), y = yLike(v);
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+    netLikes.forEach((v, i) => {
+      const x = xFor(i), y = yLike(v);
+      ctx.fillStyle = '#ff4060';
+      ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.lineWidth = 1;
+      ctx.stroke();
+      // Value label
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 11px -apple-system, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(String(v), x, y + 18);
+    });
+
+    // Header labels
+    ctx.font = '11px -apple-system, sans-serif';
+    ctx.fillStyle = '#e8834a';
+    ctx.textAlign = 'left';
+    ctx.fillText('AI Score (0–100)', pad.left + 4, pad.top - 14);
+    ctx.fillStyle = '#ff4060';
+    ctx.textAlign = 'right';
+    ctx.fillText('Net Likes', W - pad.right - 4, pad.top - 14);
+
+    // Y axis labels
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.textAlign = 'right';
+    ctx.font = '10px -apple-system, sans-serif';
+    ctx.fillText('100', pad.left - 4, pad.top + 4);
+    ctx.fillText('0', pad.left - 4, pad.top + plotH + 4);
+
+    // X axis dates
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.textAlign = 'center';
+    ctx.font = '9px -apple-system, sans-serif';
+    if (dates.length >= 2) {
+      [0, dates.length - 1].forEach(i => {
+        const d = new Date(dates[i]);
+        ctx.fillText(d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), xFor(i), H - 6);
+      });
+    } else if (dates.length === 1) {
+      const d = new Date(dates[0]);
+      ctx.fillText(d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }), W / 2, H - 6);
+    }
+  }
+
   // DETAIL PAGE
   // ==========================================================
   function initDetail() {
@@ -1031,7 +1377,8 @@
 
       const hasInfra =
         item.model || item.model_provider || item.deployment || item.host ||
-        item.context_window || item.memory_type || item.tool_use != null || item.rag != null;
+        item.context_window || item.memory_type || item.tool_use != null || item.rag != null ||
+        item.multi_agent != null || item.output_format || item.error_rate != null;
 
       const hasMetrics =
         item.running_since || item.time_saved_per_week || item.runs_completed ||
@@ -1058,7 +1405,17 @@
       // clear lede without asking agents to mark it up themselves.
       function formatStory(raw) {
         if (!raw) return '';
-        const trimmed = raw.trim();
+        // Strip markdown and bullet formatting that agents send despite rules.
+        let cleaned = raw.trim()
+          .replace(/\*{1,2}([^*]+)\*{1,2}/g, '$1')  // **bold** and *italic*
+          .replace(/^#{1,4}\s+/gm, '')                // # headers
+          .replace(/^[-•●◦]\s+/gm, '')                // - bullet and • bullet
+          .replace(/^\d+[.)]\s+/gm, '');               // 1. numbered lists
+        // Collapse lines that were bullet items into flowing text.
+        // Replace single newlines (not double) with spaces so bullet lists
+        // become prose. Preserve paragraph breaks (double newline).
+        cleaned = cleaned.replace(/\n(?!\n)/g, ' ').replace(/  +/g, ' ');
+        const trimmed = cleaned.trim();
 
         // Split into paragraphs first (double newline), then tokenize sentences.
         const rawParas = trimmed.split(/\n\n+/).filter(Boolean);
@@ -1077,29 +1434,64 @@
           return out;
         }
 
-        function scoreImportance(s) {
+        function scoreImportance(s, idx, totalSentences) {
           let n = 0;
-          if (/\d/.test(s)) n += 3;
+          // Numbers = concrete data (runs, deals, indices, dimensions)
+          const numCount = (s.match(/\d+/g) || []).length;
+          n += Math.min(numCount, 3) * 2;
+          // Named entities — capitalized words that aren't sentence starters
           const caps = (s.match(/\b[A-Z][a-z]{2,}/g) || []).length;
-          n += Math.min(caps, 3) * 2;
-          if (s.length >= 30 && s.length <= 150) n += 1;
-          if (s.length < 20) n -= 1;
+          n += Math.min(caps, 4);
+          // Outcome/action verbs = impactful sentences
+          if (/\b(built|shipped|scores?|surface|delivers?|queries?|pull|automates?|replaced?|saved?)\b/i.test(s)) n += 4;
+          // Unique/differentiating language
+          if (/\b(different|unique|unlike|only|first|not a|remember|persist)/i.test(s)) n += 3;
+          // Integration/tool mentions = concrete architecture
+          if (/\b(Pinecone|Telegram|Slack|Railway|GitHub|Express|SQLite|cron|API|database|vector)\b/i.test(s)) n += 2;
+          // Prefer first sentence of each paragraph (paragraph openers)
+          if (idx === 0) n += 2;
+          // Sweet spot length — not too short, not too long
+          if (s.length >= 50 && s.length <= 180) n += 2;
+          if (s.length < 25) n -= 3;
+          // Penalize meta/filler sentences
+          if (/\b(straightforward|basically|simply|just)\b/i.test(s)) n -= 2;
           return n;
         }
 
-        // Collect all sentences across all paragraphs to find the two best.
-        const allSentences = rawParas.flatMap(tokenizeSentences);
+        // Collect all sentences with paragraph index for context.
+        const allSentences = [];
+        rawParas.forEach((para, pIdx) => {
+          tokenizeSentences(para).forEach((s, sIdx) => {
+            allSentences.push({ ...s, paraIdx: pIdx, sentIdx: sIdx });
+          });
+        });
         const boldSet = new Set();
 
         if (allSentences.length > 0) {
-          // Always bold the first sentence.
+          // Always bold the first sentence of the story (the lede).
           boldSet.add(allSentences[0].text);
           if (allSentences.length > 1) {
-            // Score all remaining sentences, pick top 2 for 3 total bolded.
-            const scored = allSentences.slice(1).map(s => ({ s, score: scoreImportance(s.text) }));
+            // Score remaining sentences, pick top 3 for 4 total bolded.
+            // Prefer spreading bolds across different paragraphs.
+            const scored = allSentences.slice(1).map(s => ({
+              s, score: scoreImportance(s.text, s.sentIdx, allSentences.length)
+            }));
             scored.sort((a, b) => b.score - a.score);
+            // Pick best sentence
             boldSet.add(scored[0].s.text);
-            if (scored.length > 1) boldSet.add(scored[1].s.text);
+            if (scored.length > 1) {
+              // For the 3rd bold, prefer a different paragraph than the 2nd
+              const secondPara = scored[0].s.paraIdx;
+              const diffPara = scored.slice(1).find(x => x.s.paraIdx !== secondPara);
+              boldSet.add((diffPara || scored[1]).s.text);
+              if (scored.length > 2) {
+                // For the 4th bold, prefer a paragraph not yet used
+                const usedParas = new Set([allSentences[0].paraIdx, scored[0].s.paraIdx]);
+                if (diffPara) usedParas.add(diffPara.s.paraIdx);
+                const fourthCandidate = scored.slice(1).find(x => !boldSet.has(x.s.text) && !usedParas.has(x.s.paraIdx));
+                boldSet.add((fourthCandidate || scored.find(x => !boldSet.has(x.s.text)) || scored[2]).s.text);
+              }
+            }
           }
         }
 
@@ -1260,7 +1652,10 @@
              <span class="side-link-value">${escapeHtml((item.website || '').replace(/^https?:\/\//, '').replace(/\/$/, ''))}</span>
              <span class="side-link-arrow">↗</span>
            </a>`
-        : '';
+        : `<span class="side-link side-link-web side-link-placeholder">
+             <span class="side-link-label">Web</span>
+             <span class="side-link-value add-website-hint">Add via your agent</span>
+           </span>`;
       const authorCard = `
         <div class="side-card author-card">
           <div class="author-row">
@@ -1274,11 +1669,14 @@
               ${creatorLink}
               ${websiteLink}
             </div>` : ''}
-          <div class="author-posted muted">Posted ${escapeHtml((item.created_at || '').split(' ')[0] || '')}</div>
+          <div class="author-posted muted">Posted ${escapeHtml(fmtDate(item.created_at) || (item.created_at || '').split(' ')[0] || '')}</div>
         </div>`;
 
-      // Engagement card — like button + share button
+      // Engagement card — like button + share button + badge button
       const shareHref = item.share_tweet_url ? escapeHtml(item.share_tweet_url) : '#';
+      const badgeUrl = 'https://discoverhermes.com/api/badge/' + item.id + '.svg';
+      const cardUrl = 'https://discoverhermes.com/use-cases/' + item.id;
+      const badgeMarkdown = '[![DiscoverHermes](' + badgeUrl + ')](' + cardUrl + ')';
       const engagementCard = `
         <div class="side-card engagement-card">
           <div class="engagement-row">
@@ -1286,6 +1684,17 @@
             <a class="share-btn" href="${shareHref}" target="_blank" rel="noopener" title="Share on X">
               <span class="share-icon">↗</span> Share
             </a>
+          </div>
+          <button class="badge-btn" type="button" title="Get embeddable badge for your README">
+            <span class="badge-icon">◆</span> Embed badge in your GitHub README
+          </button>
+          <div class="badge-popover" style="display:none">
+            <p class="badge-popover-label">Add this to your GitHub README:</p>
+            <div class="badge-preview"><img src="/api/badge/${item.id}.svg" alt="badge preview" /></div>
+            <div class="badge-snippet-row">
+              <code class="badge-snippet">${escapeHtml(badgeMarkdown)}</code>
+              <button class="copy-btn badge-copy" data-copy-text="${escapeHtml(badgeMarkdown)}" type="button">copy</button>
+            </div>
           </div>
         </div>`;
 
@@ -1296,12 +1705,12 @@
           <div class="side-metrics">
             ${item.total_interactions ? `<div class="side-metric"><span class="side-metric-val">${fmtNumber(item.total_interactions)}</span><span class="side-metric-lbl">interactions</span></div>` : ''}
             ${item.tasks_completed ? `<div class="side-metric"><span class="side-metric-val">${fmtNumber(item.tasks_completed)}</span><span class="side-metric-lbl">tasks done</span></div>` : ''}
-            ${item.active_users ? `<div class="side-metric"><span class="side-metric-val">${fmtNumber(item.active_users)}</span><span class="side-metric-lbl">active users</span></div>` : ''}
+            ${item.active_users && item.active_users > 1 ? `<div class="side-metric"><span class="side-metric-val">${fmtNumber(item.active_users)}</span><span class="side-metric-lbl">active users</span></div>` : ''}
             ${item.time_saved_per_week ? `<div class="side-metric"><span class="side-metric-val">${item.time_saved_per_week}h</span><span class="side-metric-lbl">saved / week</span></div>` : ''}
-            ${item.runs_completed ? `<div class="side-metric"><span class="side-metric-val">${fmtNumber(item.runs_completed)}</span><span class="side-metric-lbl">runs</span></div>` : ''}
+            ${item.runs_completed ? `<div class="side-metric"><span class="side-metric-val">${fmtNumber(item.runs_completed)}</span><span class="side-metric-lbl">agent sessions</span></div>` : ''}
             ${item.hours_used ? `<div class="side-metric"><span class="side-metric-val">${fmtNumber(item.hours_used)}</span><span class="side-metric-lbl">hours used</span></div>` : ''}
             ${item.approx_monthly_tokens ? `<div class="side-metric"><span class="side-metric-val">${fmtNumber(item.approx_monthly_tokens)}</span><span class="side-metric-lbl">tokens / mo</span></div>` : ''}
-            ${item.running_since ? `<div class="side-metric wide"><span class="side-metric-val">${escapeHtml(item.running_since)}</span><span class="side-metric-lbl">running since</span></div>` : ''}
+            ${item.running_since ? `<div class="side-metric wide"><span class="side-metric-val">${escapeHtml(fmtDate(item.running_since))}</span><span class="side-metric-lbl">running since</span></div>` : ''}
           </div>
         </div>` : '';
 
@@ -1346,13 +1755,13 @@
               </div>
             </div>
           </div>` : '')}
-          <div class="score-card human-card">
+          <div class="score-card human-card human-card-likeable" data-id="${item.id}" role="button" tabindex="0" title="Click to like this agent">
             <div class="ai-card-row">
-              <span class="rank-grade human-grade">♥</span>
+              <span class="rank-grade human-grade ${likedSet.has(item.id) ? 'liked' : ''}">♥</span>
               <div>
                 <div class="score-card-title">Human Score</div>
-                <div class="ai-score-num">${netScore}<span class="ai-score-unit"> net</span></div>
-                <div class="ai-score-label">${likesCount} up · ${dislikesCount} down${likesRankStr ? ` · Ranked ${likesRankStr}` : ''}</div>
+                <div class="ai-score-num"><span class="human-card-net">${netScore}</span><span class="ai-score-unit"> net</span></div>
+                <div class="ai-score-label"><span class="human-card-up">${likesCount}</span> up · <span class="human-card-down">${dislikesCount}</span> down${likesRankStr ? ` · Ranked ${likesRankStr}` : ''}</div>
               </div>
             </div>
           </div>
@@ -1394,6 +1803,9 @@
         ${sideKv('Memory', item.memory_type)}
         ${sideKv('Tool use', item.tool_use == null ? null : (item.tool_use ? 'yes' : 'no'))}
         ${sideKv('RAG', item.rag == null ? null : (item.rag ? 'yes' : 'no'))}
+        ${sideKv('Multi-agent', item.multi_agent == null ? null : (item.multi_agent ? 'yes' : 'no'))}
+        ${sideKv('Output', item.output_format ? humanize(item.output_format) : null)}
+        ${sideKv('Error rate', item.error_rate != null ? item.error_rate + '%' : null)}
       ` : '';
       const infraCard = sideCard('Infrastructure', infraBody);
 
@@ -1524,7 +1936,7 @@
       else if (aiPct != null && aiPct <= 10) detailAchievements.push({ icon: '✨', title: 'Elite', desc: `Top 10% AI score (#${item.ai_rank} of ${item.total_scored})` });
       // Absolute metrics
       if (item.time_saved_per_week >= 10) detailAchievements.push({ icon: '⚡', title: 'Time Saver', desc: `Saves ${item.time_saved_per_week}h+ every week` });
-      if (item.runs_completed >= 500) detailAchievements.push({ icon: '🏆', title: 'Powerhouse', desc: `${fmtNumber(item.runs_completed)} runs completed` });
+      if (item.runs_completed >= 500) detailAchievements.push({ icon: '🏆', title: 'Powerhouse', desc: `${fmtNumber(item.runs_completed)} agent sessions completed` });
       if (item.approx_monthly_tokens >= 1000000) detailAchievements.push({ icon: '🧠', title: 'Token Beast', desc: `${fmtNumber(item.approx_monthly_tokens)} tokens/mo` });
       if (item.verified) detailAchievements.push({ icon: '✅', title: 'Verified', desc: 'Builder-verified agent' });
       if (item.running_since) {
@@ -1570,6 +1982,92 @@
             ${renderUpdatesPanel(item)}
           </section>
 
+          ${item.ai_rationale ? (() => {
+            const raw = item.ai_rationale;
+            // Split rationale into individual line items.
+            // Format: "Phase 1: Novelty 4.0 (detail), Autonomy 6.0 (detail). Summary. Final 45."
+            // Strategy: split on ), then on .  — each becomes its own bullet.
+            const items = [];
+            // First split on "), " to get dimension entries
+            const chunks = raw.split(/\),\s*/);
+            if (chunks.length >= 3) {
+              // Structured format with parenthesized details
+              chunks.forEach((chunk, i) => {
+                let c = chunk.trim();
+                // Strip leading "Phase N: " from the first chunk
+                c = c.replace(/^Phase\s*\d+:\s*/i, '');
+                if (i < chunks.length - 1) c += ')'; // restore stripped )
+                // The last chunk may contain "). Summary. Final." — split on ". "
+                if (i === chunks.length - 1) {
+                  c.split(/\.\s*/).filter(s => s.trim().length > 2).forEach(s => {
+                    let t = s.trim().replace(/\.$/, '');
+                    if (t) items.push(t);
+                  });
+                } else {
+                  if (c.length > 2) items.push(c);
+                }
+              });
+            } else {
+              // Fallback: split on ". "
+              raw.split(/\.\s+/).filter(s => s.trim().length > 3).forEach(s => {
+                items.push(s.trim().replace(/\.$/, ''));
+              });
+            }
+            // Style each item: highlight dimension names and scores
+            const bullets = items.map(item => {
+              const styled = escapeHtml(item)
+                .replace(/^([\w]+)\s+([\d.]+)/,
+                  '<span class="breakdown-dim">$1</span> <span class="breakdown-score">$2</span>')
+                .replace(/(\([^)]+\))/g, '<span class="breakdown-detail">$1</span>')
+                .replace(/(Final)\s+([\d.]+)/,
+                  '<span class="breakdown-dim breakdown-final">$1</span> <span class="breakdown-score breakdown-final">$2</span>')
+                .replace(/(Grade\s+[SABCD])/,
+                  '<span class="breakdown-grade">$1</span>');
+              return `<li>${styled}</li>`;
+            }).join('');
+            return `
+          <section class="detail-section ai-breakdown-section">
+            <h2>AI Score Breakdown</h2>
+            <ul class="ai-breakdown-list">${bullets}</ul>
+          </section>`;
+          })() : ''}
+
+          ${(item.score_history && item.score_history.length > 0) || item.ai_score != null ? (() => {
+            const histLen = (item.score_history || []).length;
+            const aiVal = item.ai_score != null ? (Number.isInteger(item.ai_score) ? item.ai_score : item.ai_score.toFixed(1)) : '—';
+            const netVal = (item.likes || 0) - (item.dislikes || 0);
+            const avgScore = item.site_avg_score != null ? item.site_avg_score : '—';
+            const avgLikes = item.site_avg_likes != null ? item.site_avg_likes : '—';
+            const aiDiff = item.ai_score != null && item.site_avg_score != null
+              ? (item.ai_score - item.site_avg_score).toFixed(1) : null;
+            const likeDiff = item.site_avg_likes != null
+              ? (netVal - item.site_avg_likes).toFixed(1) : null;
+            const diffBadge = (val) => {
+              if (val == null) return '';
+              const n = Number(val);
+              if (n > 0) return `<span class="score-diff score-diff-up">+${val}</span>`;
+              if (n < 0) return `<span class="score-diff score-diff-down">${val}</span>`;
+              return `<span class="score-diff">±0</span>`;
+            };
+            return `
+          <section class="detail-section score-history-section">
+            <h2>Score Overview</h2>
+            <div class="score-overview-grid">
+              <div class="score-overview-item">
+                <div class="score-overview-label">AI Score</div>
+                <div class="score-overview-val score-overview-ai">${aiVal}</div>
+                <div class="score-overview-cmp">Site avg: ${avgScore} ${diffBadge(aiDiff)}</div>
+              </div>
+              <div class="score-overview-item">
+                <div class="score-overview-label">Net Likes</div>
+                <div class="score-overview-val score-overview-likes">${netVal}</div>
+                <div class="score-overview-cmp">Site avg: ${avgLikes} ${diffBadge(likeDiff)}</div>
+              </div>
+            </div>
+            <canvas class="score-history-canvas" id="score-history-chart"></canvas>
+          </section>`;
+          })() : ''}
+
           ${commentsSectionHtml}
         </div>`;
 
@@ -1588,17 +2086,20 @@
         ? `<div class="hero-cta-row">${heroCtas.join('')}</div>` : '';
 
       // Hero metrics strip — pull 2-3 best impact numbers into the hero
+      // running_since is reliable (agents pull earliest session date).
+      // Numeric counts are self-reported — show them but label accordingly.
       const heroMetrics = [];
-      if (item.total_interactions) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${fmtNumber(item.total_interactions)}</span><span class="hero-metric-lbl">interactions</span></div>`);
-      if (item.tasks_completed) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${fmtNumber(item.tasks_completed)}</span><span class="hero-metric-lbl">tasks done</span></div>`);
-      if (item.time_saved_per_week) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${item.time_saved_per_week}h</span><span class="hero-metric-lbl">saved / week</span></div>`);
-      if (item.runs_completed && heroMetrics.length < 3) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${fmtNumber(item.runs_completed)}</span><span class="hero-metric-lbl">runs</span></div>`);
-      if (item.active_users && heroMetrics.length < 3) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${fmtNumber(item.active_users)}</span><span class="hero-metric-lbl">active users</span></div>`);
+      if (item.running_since) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${escapeHtml(fmtDate(item.running_since))}</span><span class="hero-metric-lbl">running since</span></div>`);
+      if (item.total_interactions && heroMetrics.length < 3) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${fmtNumber(item.total_interactions)}</span><span class="hero-metric-lbl">interactions</span></div>`);
+      if (item.tasks_completed && heroMetrics.length < 3) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${fmtNumber(item.tasks_completed)}</span><span class="hero-metric-lbl">tasks done</span></div>`);
+      if (item.runs_completed && heroMetrics.length < 3) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${fmtNumber(item.runs_completed)}</span><span class="hero-metric-lbl">agent sessions</span></div>`);
+      if (item.active_users && item.active_users > 1 && heroMetrics.length < 3) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${fmtNumber(item.active_users)}</span><span class="hero-metric-lbl">active users</span></div>`);
+      if (item.time_saved_per_week && heroMetrics.length < 3) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${item.time_saved_per_week}h</span><span class="hero-metric-lbl">saved / week</span></div>`);
       if (item.approx_monthly_tokens && heroMetrics.length < 3) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${fmtNumber(item.approx_monthly_tokens)}</span><span class="hero-metric-lbl">tokens / mo</span></div>`);
       if (item.hours_used && heroMetrics.length < 3) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${fmtNumber(item.hours_used)}</span><span class="hero-metric-lbl">hours used</span></div>`);
-      if (item.running_since && heroMetrics.length < 3) heroMetrics.push(`<div class="hero-metric"><span class="hero-metric-val">${escapeHtml(item.running_since)}</span><span class="hero-metric-lbl">running since</span></div>`);
+      const metricsNote = heroMetrics.length && !item.verified ? '<span class="hero-metrics-note">self-reported</span>' : '';
       const heroMetricsHtml = heroMetrics.length
-        ? `<div class="hero-metrics-strip">${heroMetrics.slice(0, 3).join('')}</div>` : '';
+        ? `<div class="hero-metrics-strip">${heroMetrics.slice(0, 3).join('')}${metricsNote}</div>` : '';
 
       root.innerHTML = `
         <a class="back-link" href="/">← Back to feed</a>
@@ -1650,6 +2151,34 @@
           e.preventDefault();
           toggleDislike(Number(dislikeBtn.dataset.id), dislikeBtn);
         });
+      }
+
+      // Human score card — click the card to like, synced with sidebar like-btn
+      const humanCard = root.querySelector('.human-card-likeable');
+      if (humanCard && likeBtn) {
+        const doLike = () => {
+          toggleLike(Number(humanCard.dataset.id), likeBtn);
+          // Sync visual state back to the human-card
+          requestAnimationFrame(() => {
+            const heart = humanCard.querySelector('.human-grade');
+            const netEl = humanCard.querySelector('.human-card-net');
+            const upEl = humanCard.querySelector('.human-card-up');
+            if (heart) heart.classList.toggle('liked', likedSet.has(Number(humanCard.dataset.id)));
+            if (heart && likedSet.has(Number(humanCard.dataset.id))) {
+              heart.classList.add('like-burst');
+              heart.addEventListener('animationend', () => heart.classList.remove('like-burst'), { once: true });
+            }
+            // Update counts from the canonical like-btn
+            const likeCt = likeBtn.querySelector('.count');
+            const disCt = root.querySelector('.dislike-btn .count');
+            const up = Number(likeCt?.textContent) || 0;
+            const down = Number(disCt?.textContent) || 0;
+            if (netEl) netEl.textContent = up - down;
+            if (upEl) upEl.textContent = up;
+          });
+        };
+        humanCard.addEventListener('click', doLike);
+        humanCard.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); doLike(); } });
       }
 
       // ---------- gallery: author upload + remove ----------
@@ -1850,15 +2379,19 @@
         const closeBtn = document.createElement('button');
         closeBtn.className = 'lightbox-close';
         closeBtn.innerHTML = '&times;';
-        closeBtn.addEventListener('click', (ev) => { ev.stopPropagation(); overlay.remove(); });
+        function closeLightbox() {
+          overlay.remove();
+          document.removeEventListener('keydown', onKey);
+        }
+        closeBtn.addEventListener('click', (ev) => { ev.stopPropagation(); closeLightbox(); });
         overlay.appendChild(closeBtn);
 
         overlay.addEventListener('click', (ev) => {
-          if (ev.target === overlay) overlay.remove();
+          if (ev.target === overlay) closeLightbox();
         });
 
         function onKey(ev) {
-          if (ev.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', onKey); }
+          if (ev.key === 'Escape') closeLightbox();
           if (ev.key === 'ArrowLeft' && allUrls.length > 1) { lbIdx = (lbIdx - 1 + allUrls.length) % allUrls.length; lbImg.src = allUrls[lbIdx]; }
           if (ev.key === 'ArrowRight' && allUrls.length > 1) { lbIdx = (lbIdx + 1) % allUrls.length; lbImg.src = allUrls[lbIdx]; }
         }
@@ -2009,6 +2542,27 @@
         window.__meta = meta;
         render(item);
         setupDetailNav(id, root);
+        // Draw score history sparkline
+        const canvas = document.getElementById('score-history-chart');
+        if (canvas) drawScoreHistory(canvas, item);
+        // Badge popover toggle
+        const badgeBtn = root.querySelector('.badge-btn');
+        const badgePop = root.querySelector('.badge-popover');
+        if (badgeBtn && badgePop) {
+          badgeBtn.addEventListener('click', () => {
+            badgePop.style.display = badgePop.style.display === 'none' ? 'block' : 'none';
+          });
+        }
+        // Re-bind copy buttons for dynamically added elements
+        root.querySelectorAll('.copy-btn').forEach((btn) => {
+          btn.addEventListener('click', async () => {
+            const text = btn.dataset.copyText;
+            if (!text) return;
+            try { await navigator.clipboard.writeText(text); } catch {}
+            btn.textContent = 'copied!';
+            setTimeout(() => { btn.textContent = 'copy'; }, 1500);
+          });
+        });
       })
       .catch(() => {
         root.innerHTML = `<div class="empty">Couldn't load this use case. It may have been removed.</div>`;
@@ -2159,12 +2713,11 @@
     }
 
     const donutKeys = new Set(['by_deployment', 'by_trigger', 'by_memory', 'tool_use', 'rag']);
-    const horizontalKeys = new Set(['by_integration', 'by_tool', 'by_skill', 'by_plugin', 'by_model', 'by_host']);
-    const lineKeys = new Set(['daily', 'cumulative', 'cumulative_tokens']);
+    const horizontalKeys = new Set(['by_integration', 'by_tool', 'by_model']);
+    const lineKeys = new Set(['daily', 'cumulative']);
     const LINE_LABELS = {
       daily: 'new agents',
       cumulative: 'total agents',
-      cumulative_tokens: 'tokens processed',
     };
 
     loadHeadline().then((data) => {
@@ -2272,24 +2825,89 @@
     };
 
     let currentView = 'ai';
+    let viewMode = 'grid'; // default to card grid view
+
+    // Initialize view-toggle buttons
+    function initViewToggle() {
+      var toggleContainer = document.getElementById('view-toggle');
+      if (!toggleContainer) return;
+      toggleContainer.querySelectorAll('.view-toggle-btn').forEach(function(btn) {
+        btn.classList.toggle('active', btn.dataset.mode === viewMode);
+        btn.addEventListener('click', function() {
+          var mode = btn.dataset.mode;
+          if (mode === viewMode) return;
+          viewMode = mode;
+          toggleContainer.querySelectorAll('.view-toggle-btn').forEach(function(b) {
+            b.classList.toggle('active', b.dataset.mode === viewMode);
+          });
+          loadRankings(currentView);
+        });
+      });
+    }
+    initViewToggle();
+
+    function renderRankRow(item, rank, view) {
+      var medals = ['\u{1F947}', '\u{1F948}', '\u{1F949}'];
+      var rankLabel = rank <= 3
+        ? '<span class="ranking-row-medal">' + medals[rank - 1] + '</span>'
+        : '<span class="ranking-row-num">#' + rank + '</span>';
+
+      var likes = Number(item.likes) || 0;
+      var dislikes = Number(item.dislikes) || 0;
+      var netLikes = likes - dislikes;
+      var score = item.ai_score || 0;
+      var scoreDisplay = Number.isInteger(score) ? score : score.toFixed(1);
+
+      var scoreHtml;
+      if (view === 'ai' && score) {
+        scoreHtml = '<span class="ranking-row-score"><span class="ranking-row-score-num">' + scoreDisplay + '</span> <span class="ranking-row-score-label">AI</span></span>';
+      } else {
+        scoreHtml = '<span class="ranking-row-score ranking-row-score-likes">\u2665 ' + netLikes + '</span>';
+      }
+
+      var imgHtml = item.image_url
+        ? '<div class="ranking-row-img"><img src="' + escapeHtml(item.image_url) + '" alt="" loading="lazy" referrerpolicy="no-referrer" /></div>'
+        : '<div class="ranking-row-img ranking-row-img-placeholder"><span class="brand-mark">\u25C6</span></div>';
+
+      var author = item.twitter_handle
+        ? '<a class="ranking-row-author" href="https://x.com/' + escapeHtml(item.twitter_handle) + '" target="_blank" rel="noopener">@' + escapeHtml(item.twitter_handle) + '</a>'
+        : item.display_name
+          ? '<span class="ranking-row-author">' + escapeHtml(item.display_name) + '</span>'
+          : '';
+
+      return '<div class="ranking-row' + (rank <= 3 ? ' ranking-row-top' : '') + '" data-href="/use-cases/' + item.id + '">'
+        + '<span class="ranking-row-rank">' + rankLabel + '</span>'
+        + imgHtml
+        + '<a class="ranking-row-title" href="/use-cases/' + item.id + '">' + escapeHtml(item.title) + '</a>'
+        + '<span class="ranking-row-author-cell">' + author + '</span>'
+        + scoreHtml
+        + '<span class="ranking-row-actions">' + likeBtnHtml(item) + '</span>'
+        + '</div>';
+    }
 
     async function loadRankings(view) {
       const grid = document.getElementById('rankings-grid');
       if (!grid) return;
 
       const cfg = VIEWS[view] || VIEWS.ai;
-      grid.innerHTML = '<div class="loading">Loading rankings…</div>';
+      grid.innerHTML = '<div class="loading">Loading rankings\u2026</div>';
 
       try {
         const res = await fetch(cfg.url);
         const items = await res.json();
 
         if (!Array.isArray(items) || items.length === 0) {
-          grid.innerHTML = `<p class="empty">${cfg.empty}</p>`;
+          grid.innerHTML = '<p class="empty">' + cfg.empty + '</p>';
           return;
         }
 
-        grid.innerHTML = items.map((item, i) => renderRankCard(item, i + 1, view)).join('');
+        if (viewMode === 'list') {
+          grid.className = 'rankings-list';
+          grid.innerHTML = items.map(function(item, i) { return renderRankRow(item, i + 1, view); }).join('');
+        } else {
+          grid.className = 'rankings-grid';
+          grid.innerHTML = items.map(function(item, i) { return renderRankCard(item, i + 1, view); }).join('');
+        }
 
         // Wire up like buttons
         grid.querySelectorAll('.like-btn').forEach((btn) => {
@@ -2307,11 +2925,18 @@
             toggleDislike(Number(btn.dataset.id), btn);
           });
         });
-        // Card click → detail
+        // Card click → detail (grid cards)
         grid.querySelectorAll('.ranking-card[data-href]').forEach((card) => {
           card.addEventListener('click', (e) => {
             if (e.target.closest('a, button')) return;
             location.href = card.dataset.href;
+          });
+        });
+        // Row click → detail (list rows)
+        grid.querySelectorAll('.ranking-row[data-href]').forEach(function(row) {
+          row.addEventListener('click', function(e) {
+            if (e.target.closest('a, button')) return;
+            location.href = row.dataset.href;
           });
         });
       } catch (err) {
