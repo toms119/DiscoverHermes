@@ -2645,7 +2645,7 @@
     };
 
     let currentView = 'ai';
-    let viewMode = 'list'; // default to list view
+    let viewMode = 'grid'; // default to card grid view
 
     // Initialize view-toggle buttons
     function initViewToggle() {
