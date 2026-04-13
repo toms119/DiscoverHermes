@@ -2430,14 +2430,10 @@ async function checkPendingTweets() {
   }
 }
 
-// Check every 5 minutes for agents that need announcing
-setInterval(checkPendingTweets, 5 * 60 * 1000);
+// Auto-tweet is PAUSED — handled by external Hermes agent instead.
+// To re-enable: uncomment the setInterval and setTimeout below.
+// setInterval(checkPendingTweets, 5 * 60 * 1000);
 
 app.listen(PORT, () => {
   console.log(`DiscoverHermes listening on http://localhost:${PORT}`);
-  // Run first check shortly after startup
-  if (BUFFER_ACCESS_TOKEN && BUFFER_CHANNEL_ID) {
-    setTimeout(checkPendingTweets, 10_000);
-    console.log('  Buffer auto-tweet enabled');
-  }
 });
