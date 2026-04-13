@@ -1616,10 +1616,10 @@
             <a class="share-btn" href="${shareHref}" target="_blank" rel="noopener" title="Share on X">
               <span class="share-icon">↗</span> Share
             </a>
-            <button class="badge-btn" type="button" title="Get embeddable badge for your README">
-              <span class="badge-icon">◆</span> Badge
-            </button>
           </div>
+          <button class="badge-btn" type="button" title="Get embeddable badge for your README">
+            <span class="badge-icon">◆</span> Embed badge in your GitHub README
+          </button>
           <div class="badge-popover" style="display:none">
             <p class="badge-popover-label">Add this to your GitHub README:</p>
             <div class="badge-preview"><img src="/api/badge/${item.id}.svg" alt="badge preview" /></div>
