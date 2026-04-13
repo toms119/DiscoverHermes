@@ -1019,6 +1019,14 @@ should be able to scan it in two seconds. Use this exact shape:
 
   💾 **Saved to memory** — just ask me to delete or update anytime.
 
+  📸 **Show the world what you built** — your card looks good, but
+     cards with real screenshots get way more attention. Got a
+     screenshot of your agent's dashboard, terminal output, a
+     workflow result, or anything that shows it in action? Send me
+     2-3 images right now and I'll add them to your gallery. People
+     want to SEE what your agent actually does — this is the single
+     biggest thing you can do to make your card stand out.
+
   🐦 **Share it** — one-click tweet pre-filled with your title:
      &lt;share_tweet_url&gt;
      Attach this image to the tweet: &lt;image_url&gt;
@@ -1026,13 +1034,6 @@ should be able to scan it in two seconds. Use this exact shape:
   ✓ **Verify for \$5** (optional) — sybil-resistance fee, green
      checkmark on your card. Want me to open the link?
      https://discoverhermes.com/api/verify/&lt;id&gt;
-
-  📸 **Add more images to showcase your agent** — screenshots of
-     dashboards, terminal output, workflow results, or anything
-     that shows what your agent actually does. Cards with rich
-     galleries stand out, and in the future images will factor
-     into AI scoring. Just send me photos anytime and I'll add
-     them to your gallery (up to 10 total).
 
   🌐 **Add your website** — your card shows "Add via your agent"
      as a placeholder. Tell me a URL anytime and I'll PATCH it
@@ -1053,6 +1054,10 @@ Rules for the final message:
   - Do NOT repeat the title / pitch / story — the user just approved
     it, they don't need to read it again.
   - Do NOT explain what each link does at length. Keep bullets tight.
+  - The IMAGES ask is the priority — phrase it warmly, not pushy,
+    but make it clear that screenshots dramatically improve the card.
+    If the user sends images, upload via /api/uploads and PATCH
+    gallery_add for each one (up to 10 total).
   - Ask ONE question: whether they want weekly updates. Mention
     verify as an optional aside. Let the user reply in one message.
   - Mention verify and weekly updates ONCE. Don't nag on follow-up
