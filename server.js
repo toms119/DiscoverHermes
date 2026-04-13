@@ -32,7 +32,7 @@ const PUBLIC_URL = (process.env.PUBLIC_URL || 'https://discoverhermes.com').repl
 // Buffer auto-tweet: when both env vars are set, new agents get announced
 // ~30 min after submission (once they have an AI score).
 const BUFFER_ACCESS_TOKEN = process.env.BUFFER_ACCESS_TOKEN || null;
-const BUFFER_PROFILE_ID   = process.env.BUFFER_PROFILE_ID   || null;
+const BUFFER_CHANNEL_ID   = process.env.BUFFER_CHANNEL_ID   || null;
 const TWEET_DELAY_MS      = 30 * 60 * 1000; // 30 minutes
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
@@ -2367,33 +2367,45 @@ function composeTweet(agent) {
 
 async function sendBufferTweet(agent) {
   const text = composeTweet(agent);
-  const body = {
-    text,
-    profile_ids: [BUFFER_PROFILE_ID],
-  };
-  // Attach the agent's image if it has one
-  if (agent.image_url) {
-    body.media = { photo: agent.image_url };
-  }
 
-  const res = await fetch('https://api.bufferapp.com/1/updates/create.json', {
+  // Buffer GraphQL API — createPost mutation
+  const mutation = `
+    mutation CreatePost($input: CreatePostInput!) {
+      createPost(input: $input) {
+        id
+        status
+      }
+    }
+  `;
+  const variables = {
+    input: {
+      channelIds: [BUFFER_CHANNEL_ID],
+      text,
+      ...(agent.image_url ? { media: [{ remoteUrl: agent.image_url }] } : {}),
+    },
+  };
+
+  const res = await fetch('https://graph.buffer.com/graphql', {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${BUFFER_ACCESS_TOKEN}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify(body),
+    body: JSON.stringify({ query: mutation, variables }),
   });
 
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Buffer API ${res.status}: ${err}`);
+  const json = await res.json();
+  if (json.errors && json.errors.length) {
+    throw new Error(`Buffer GraphQL: ${json.errors.map(e => e.message).join(', ')}`);
   }
-  return res.json();
+  if (!res.ok) {
+    throw new Error(`Buffer API ${res.status}: ${JSON.stringify(json)}`);
+  }
+  return json;
 }
 
 async function checkPendingTweets() {
-  if (!BUFFER_ACCESS_TOKEN || !BUFFER_PROFILE_ID) return;
+  if (!BUFFER_ACCESS_TOKEN || !BUFFER_CHANNEL_ID) return;
 
   const cutoff = new Date(Date.now() - TWEET_DELAY_MS).toISOString();
   const pending = db.prepare(`
@@ -2424,7 +2436,7 @@ setInterval(checkPendingTweets, 5 * 60 * 1000);
 app.listen(PORT, () => {
   console.log(`DiscoverHermes listening on http://localhost:${PORT}`);
   // Run first check shortly after startup
-  if (BUFFER_ACCESS_TOKEN && BUFFER_PROFILE_ID) {
+  if (BUFFER_ACCESS_TOKEN && BUFFER_CHANNEL_ID) {
     setTimeout(checkPendingTweets, 10_000);
     console.log('  Buffer auto-tweet enabled');
   }
