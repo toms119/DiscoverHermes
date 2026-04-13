@@ -931,16 +931,33 @@
       // Varied orange shade classes — each slot picks one per item
       var shades = ['activity-shade-0','activity-shade-1','activity-shade-2','activity-shade-3','activity-shade-4'];
 
-      // Bold @handles, display names, and numbers in text
-      function formatText(raw) {
-        var t = escapeHtml(raw);
+      // Bold names and numbers. Also strip any leftover emoji codepoints.
+      function formatText(raw, type) {
+        // Strip emoji unicode (surrogate pairs + common emoji ranges)
+        var clean = raw.replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}\u{200D}\u{20E3}]/gu, '').trim();
+        var t = escapeHtml(clean);
         // Bold @handles
         t = t.replace(/@[\w]+/g, '<b>$&</b>');
-        // Bold numbers like "28/100", "56/100", standalone digits, "Grade A+"
+        // Bold the name/title portion based on activity type patterns
+        if (type === 'submitted') {
+          // "@handle submitted <title>" — bold the title after "submitted "
+          t = t.replace(/( submitted )(.+)$/, '$1<b>$2</b>');
+        } else if (type === 'scored') {
+          // "<title> scored ..." — bold title before " scored"
+          t = t.replace(/^(.+?)( scored )/, '<b>$1</b>$2');
+        } else if (type === 'commented') {
+          // "<name> commented on <title>" — bold name + title
+          t = t.replace(/^(.+?)( commented on )(.+)$/, '<b>$1</b>$2<b>$3</b>');
+        } else if (type === 'trending') {
+          // "<title> is trending with N likes" — bold title
+          t = t.replace(/^(.+?)( is trending)/, '<b>$1</b>$2');
+        }
+        // Bold numbers like "28/100", standalone digits, "Grade A+"
         t = t.replace(/\d+\/\d+/g, '<b>$&</b>');
-        t = t.replace(/(?<!\/)(\b\d+\b)(?!\/)/g, '<b>$1</b>');
-        // Bold "Grade X"
+        t = t.replace(/(?<![\/\w])(\b\d+\b)(?!\/)/g, '<b>$1</b>');
         t = t.replace(/Grade\s+([A-F][+-]?|\?)/g, '<b>Grade $1</b>');
+        // Clean up any nested <b> tags
+        t = t.replace(/<b><b>/g, '<b>').replace(/<\/b><\/b>/g, '</b>');
         return t;
       }
 
@@ -960,7 +977,7 @@
           var item = items[idx % items.length];
           var shade = shades[shadeIdx % shades.length];
           slot.innerHTML = '<a class="activity-item ' + shade + '" href="' + escapeHtml(item.url) + '">'
-            + '<span>' + formatText(item.text) + '</span>'
+            + '<span>' + formatText(item.text, item.type) + '</span>'
             + '</a>';
           slot.classList.remove('slot-out');
           slot.classList.add('slot-in');
@@ -982,9 +999,9 @@
 
       // Stagger starts: slot 0 starts immediately, slot 1 after 1.5s, slot 2 after 3s
       // Each has slightly different hold times so they drift apart naturally
-      runSlot(0, 0, 4000, 600);
-      setTimeout(function() { runSlot(1, Math.floor(items.length / 3), 4800, 700); }, 1500);
-      setTimeout(function() { runSlot(2, Math.floor(items.length * 2 / 3), 5200, 800); }, 3000);
+      runSlot(0, 0, 3400, 510);
+      setTimeout(function() { runSlot(1, Math.floor(items.length / 3), 4080, 595); }, 1275);
+      setTimeout(function() { runSlot(2, Math.floor(items.length * 2 / 3), 4420, 680); }, 2550);
     } catch (e) {
       // silently ignore — ticker is non-critical
     }
