@@ -961,10 +961,9 @@
         return t;
       }
 
-      // Create 3 independent slots
+      // Create 2 independent slots
       container.innerHTML = '<div class="activity-slot" id="aslot-0"></div>'
-        + '<div class="activity-slot" id="aslot-1"></div>'
-        + '<div class="activity-slot" id="aslot-2"></div>';
+        + '<div class="activity-slot" id="aslot-1"></div>';
 
       // Render one item into a slot
       function renderSlot(slot, item, shadeIdx) {
@@ -974,14 +973,13 @@
           + '</a>';
       }
 
-      // Pre-load all 3 slots immediately so they're visible on first paint
+      // Pre-load both slots immediately so they're visible on first paint
       var slotEls = [
         document.getElementById('aslot-0'),
-        document.getElementById('aslot-1'),
-        document.getElementById('aslot-2')
+        document.getElementById('aslot-1')
       ];
-      var startOffsets = [0, Math.floor(items.length / 3), Math.floor(items.length * 2 / 3)];
-      for (var s = 0; s < 3; s++) {
+      var startOffsets = [0, Math.floor(items.length / 2)];
+      for (var s = 0; s < 2; s++) {
         renderSlot(slotEls[s], items[startOffsets[s] % items.length], s);
         slotEls[s].classList.add('slot-in');
       }
@@ -994,7 +992,6 @@
         var shadeIdx = slotId;
 
         function cycleNext() {
-          // Fade out current
           slot.classList.remove('slot-in');
           slot.classList.add('slot-out');
           setTimeout(function() {
@@ -1003,18 +1000,15 @@
             renderSlot(slot, items[idx], shadeIdx);
             slot.classList.remove('slot-out');
             slot.classList.add('slot-in');
-            // Hold, then cycle again
             setTimeout(cycleNext, holdMs);
           }, pauseMs);
         }
-        // First cycle starts after the initial hold
         setTimeout(cycleNext, holdMs);
       }
 
-      // All 3 start cycling at staggered intervals so they drift apart
+      // 2 slots with different hold times so they drift apart
       runSlot(0, startOffsets[0], 3400, 510);
       runSlot(1, startOffsets[1], 4080, 595);
-      runSlot(2, startOffsets[2], 4420, 680);
     } catch (e) {
       // silently ignore — ticker is non-critical
     }
