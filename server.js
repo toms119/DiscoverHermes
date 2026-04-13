@@ -2050,6 +2050,71 @@ app.get('/api/featured', (req, res) => {
   res.json(rows.map(hydrate));
 });
 
+// GET /api/activity — recent site activity feed for the homepage ticker
+app.get('/api/activity', (_req, res) => {
+  try {
+    const submitted = db.prepare(`
+      SELECT id, title, display_name, twitter_handle, created_at
+      FROM submissions WHERE approved = 1
+      ORDER BY created_at DESC LIMIT 5
+    `).all().map(r => ({
+      type: 'submitted',
+      text: `@${r.twitter_handle || r.display_name || 'someone'} submitted ${r.title}`,
+      url: `/use-cases/${r.id}`,
+      timestamp: r.created_at
+    }));
+
+    const scored = db.prepare(`
+      SELECT id, title, ai_score, ai_grade, last_reviewed_at
+      FROM submissions WHERE approved = 1 AND ai_score IS NOT NULL
+      ORDER BY last_reviewed_at DESC LIMIT 5
+    `).all().map(r => ({
+      type: 'scored',
+      text: `${r.title} scored ${Math.round(r.ai_score)}/100 (Grade ${r.ai_grade || '?'})`,
+      url: `/use-cases/${r.id}`,
+      timestamp: r.last_reviewed_at
+    }));
+
+    const commented = db.prepare(`
+      SELECT sc.twitter_handle, sc.display_name, sc.created_at,
+             s.id AS submission_id, s.title
+      FROM submission_comments sc
+      JOIN submissions s ON sc.submission_id = s.id
+      ORDER BY sc.created_at DESC LIMIT 5
+    `).all().map(r => ({
+      type: 'commented',
+      text: `${r.display_name || r.twitter_handle || 'someone'} commented on ${r.title}`,
+      url: `/use-cases/${r.submission_id}`,
+      timestamp: r.created_at
+    }));
+
+    const trending = db.prepare(`
+      SELECT id, title, likes
+      FROM submissions WHERE approved = 1 AND likes > 0
+      ORDER BY likes DESC LIMIT 5
+    `).all().map(r => ({
+      type: 'trending',
+      text: `${r.title} is trending with ${r.likes} likes`,
+      url: `/use-cases/${r.id}`,
+      timestamp: null
+    }));
+
+    const merged = [...submitted, ...scored, ...commented, ...trending]
+      .sort((a, b) => {
+        if (!a.timestamp && !b.timestamp) return 0;
+        if (!a.timestamp) return 1;
+        if (!b.timestamp) return -1;
+        return new Date(b.timestamp) - new Date(a.timestamp);
+      })
+      .slice(0, 20);
+
+    res.json(merged);
+  } catch (err) {
+    console.error('/api/activity error:', err);
+    res.status(500).json({ error: 'failed to load activity' });
+  }
+});
+
 // ---------- agent shortcut ----------
 // GET /submit/agent — returns the raw submission prompt as plain text so
 // a Hermes agent that visits this URL can immediately read and follow it.

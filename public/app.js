@@ -896,6 +896,7 @@
     startLivePoll();
     loadFeatured();
     loadSpotlight();
+    loadActivityFeed();
 
     // ---------- hero text cycling: Hermes → OpenClaw → IronClaw … ----------
     const heroFw = document.getElementById('hero-framework');
@@ -910,6 +911,30 @@
           heroFw.style.opacity = '1';
         }, 400);
       }, 3000);
+    }
+  }
+
+  // ==========================================================
+  // ACTIVITY FEED TICKER (feed page — horizontal scrolling banner)
+  // ==========================================================
+  async function loadActivityFeed() {
+    var container = document.getElementById('activity-feed');
+    if (!container) return;
+    try {
+      var res = await fetch('/api/activity');
+      var items = await res.json();
+      if (!Array.isArray(items) || items.length === 0) return;
+      var icons = { submitted: '\uD83D\uDE80', scored: '\u2B50', commented: '\uD83D\uDCAC', trending: '\uD83D\uDD25' };
+      var html = items.map(function(item) {
+        return '<a class="activity-item" href="' + escapeHtml(item.url) + '">'
+          + '<span class="activity-icon">' + (icons[item.type] || '') + '</span>'
+          + '<span>' + escapeHtml(item.text) + '</span>'
+          + '</a>';
+      }).join('');
+      // Duplicate items for seamless infinite scroll loop
+      container.innerHTML = '<div class="activity-track">' + html + html + '</div>';
+    } catch (e) {
+      // silently ignore — ticker is non-critical
     }
   }
 
@@ -2620,24 +2645,89 @@
     };
 
     let currentView = 'ai';
+    let viewMode = 'list'; // default to list view
+
+    // Initialize view-toggle buttons
+    function initViewToggle() {
+      var toggleContainer = document.getElementById('view-toggle');
+      if (!toggleContainer) return;
+      toggleContainer.querySelectorAll('.view-toggle-btn').forEach(function(btn) {
+        btn.classList.toggle('active', btn.dataset.mode === viewMode);
+        btn.addEventListener('click', function() {
+          var mode = btn.dataset.mode;
+          if (mode === viewMode) return;
+          viewMode = mode;
+          toggleContainer.querySelectorAll('.view-toggle-btn').forEach(function(b) {
+            b.classList.toggle('active', b.dataset.mode === viewMode);
+          });
+          loadRankings(currentView);
+        });
+      });
+    }
+    initViewToggle();
+
+    function renderRankRow(item, rank, view) {
+      var medals = ['\u{1F947}', '\u{1F948}', '\u{1F949}'];
+      var rankLabel = rank <= 3
+        ? '<span class="ranking-row-medal">' + medals[rank - 1] + '</span>'
+        : '<span class="ranking-row-num">#' + rank + '</span>';
+
+      var likes = Number(item.likes) || 0;
+      var dislikes = Number(item.dislikes) || 0;
+      var netLikes = likes - dislikes;
+      var score = item.ai_score || 0;
+      var scoreDisplay = Number.isInteger(score) ? score : score.toFixed(1);
+
+      var scoreHtml;
+      if (view === 'ai' && score) {
+        scoreHtml = '<span class="ranking-row-score"><span class="ranking-row-score-num">' + scoreDisplay + '</span> <span class="ranking-row-score-label">AI</span></span>';
+      } else {
+        scoreHtml = '<span class="ranking-row-score ranking-row-score-likes">\u2665 ' + netLikes + '</span>';
+      }
+
+      var imgHtml = item.image_url
+        ? '<div class="ranking-row-img"><img src="' + escapeHtml(item.image_url) + '" alt="" loading="lazy" referrerpolicy="no-referrer" /></div>'
+        : '<div class="ranking-row-img ranking-row-img-placeholder"><span class="brand-mark">\u25C6</span></div>';
+
+      var author = item.twitter_handle
+        ? '<a class="ranking-row-author" href="https://x.com/' + escapeHtml(item.twitter_handle) + '" target="_blank" rel="noopener">@' + escapeHtml(item.twitter_handle) + '</a>'
+        : item.display_name
+          ? '<span class="ranking-row-author">' + escapeHtml(item.display_name) + '</span>'
+          : '';
+
+      return '<div class="ranking-row' + (rank <= 3 ? ' ranking-row-top' : '') + '" data-href="/use-cases/' + item.id + '">'
+        + '<span class="ranking-row-rank">' + rankLabel + '</span>'
+        + imgHtml
+        + '<a class="ranking-row-title" href="/use-cases/' + item.id + '">' + escapeHtml(item.title) + '</a>'
+        + '<span class="ranking-row-author-cell">' + author + '</span>'
+        + scoreHtml
+        + '<span class="ranking-row-actions">' + likeBtnHtml(item) + '</span>'
+        + '</div>';
+    }
 
     async function loadRankings(view) {
       const grid = document.getElementById('rankings-grid');
       if (!grid) return;
 
       const cfg = VIEWS[view] || VIEWS.ai;
-      grid.innerHTML = '<div class="loading">Loading rankings…</div>';
+      grid.innerHTML = '<div class="loading">Loading rankings\u2026</div>';
 
       try {
         const res = await fetch(cfg.url);
         const items = await res.json();
 
         if (!Array.isArray(items) || items.length === 0) {
-          grid.innerHTML = `<p class="empty">${cfg.empty}</p>`;
+          grid.innerHTML = '<p class="empty">' + cfg.empty + '</p>';
           return;
         }
 
-        grid.innerHTML = items.map((item, i) => renderRankCard(item, i + 1, view)).join('');
+        if (viewMode === 'list') {
+          grid.className = 'rankings-list';
+          grid.innerHTML = items.map(function(item, i) { return renderRankRow(item, i + 1, view); }).join('');
+        } else {
+          grid.className = 'rankings-grid';
+          grid.innerHTML = items.map(function(item, i) { return renderRankCard(item, i + 1, view); }).join('');
+        }
 
         // Wire up like buttons
         grid.querySelectorAll('.like-btn').forEach((btn) => {
@@ -2655,11 +2745,18 @@
             toggleDislike(Number(btn.dataset.id), btn);
           });
         });
-        // Card click → detail
+        // Card click → detail (grid cards)
         grid.querySelectorAll('.ranking-card[data-href]').forEach((card) => {
           card.addEventListener('click', (e) => {
             if (e.target.closest('a, button')) return;
             location.href = card.dataset.href;
+          });
+        });
+        // Row click → detail (list rows)
+        grid.querySelectorAll('.ranking-row[data-href]').forEach(function(row) {
+          row.addEventListener('click', function(e) {
+            if (e.target.closest('a, button')) return;
+            location.href = row.dataset.href;
           });
         });
       } catch (err) {
