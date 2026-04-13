@@ -961,9 +961,9 @@ a { color: inherit; text-decoration: none; }
   display: flex;
   flex-direction: column;
   gap: 0;
-  max-width: 100%;
-  padding: 8px 24px 64px;
 }
+/* Hide dislike button in list rows — too noisy for compact view */
+.feed.feed-list .dislike-btn { display: none; }
 .feed-row {
   display: flex;
   align-items: center;
