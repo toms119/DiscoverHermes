@@ -1990,6 +1990,29 @@ app.delete('/api/admin/submissions/:id', requireAdmin, (req, res) => {
   res.json({ ok: true });
 });
 
+// GET /api/admin/untweeted — agents that have been scored but not yet tweeted
+app.get('/api/admin/untweeted', requireAdmin, (_req, res) => {
+  const rows = db.prepare(`
+    SELECT id, title, pitch, description, ai_score, ai_grade,
+           twitter_handle, image_url, created_at
+    FROM submissions
+    WHERE approved = 1
+      AND ai_score IS NOT NULL
+      AND tweeted_at IS NULL
+    ORDER BY created_at ASC
+  `).all();
+  res.json(rows);
+});
+
+// POST /api/admin/mark-tweeted/:id — mark an agent as tweeted
+app.post('/api/admin/mark-tweeted/:id', requireAdmin, (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return res.status(400).json({ error: 'invalid id' });
+  const info = db.prepare("UPDATE submissions SET tweeted_at = datetime('now') WHERE id = ?").run(id);
+  if (info.changes === 0) return res.status(404).json({ error: 'not found' });
+  res.json({ ok: true, id });
+});
+
 // ---------- AI scoring endpoints ----------
 // PATCH /api/submissions/:id/score — update AI score fields
 // Uses delete token OR admin token for authorization
