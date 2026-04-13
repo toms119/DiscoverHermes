@@ -912,7 +912,7 @@
           const items = await res.json();
           if (!Array.isArray(items) || items.length === 0) return;
           const knownIds = new Set(
-            [...feedEl.querySelectorAll('.card[data-id]')].map((n) => Number(n.dataset.id))
+            [...feedEl.querySelectorAll('[data-id]')].map((n) => Number(n.dataset.id))
           );
           const fresh = items.filter((it) => !knownIds.has(Number(it.id)));
           if (fresh.length === 0) return;

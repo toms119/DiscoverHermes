@@ -822,6 +822,23 @@ app.post('/api/submissions', smallJson, submitLimiter, submitLimiterDaily, (req,
   // genuinely different agents while still making spam swarms expensive
   // (each extra card requires burning a real Twitter handle). After a
   // legit delete the row is gone, so slots free up naturally.
+  // Duplicate guard: reject if the same handle already posted an agent
+  // with the same title (case-insensitive). Prevents accidental re-submits.
+  const existingDupe = db
+    .prepare(
+      `SELECT id FROM submissions
+       WHERE LOWER(twitter_handle) = LOWER(?) AND LOWER(title) = LOWER(?)
+       LIMIT 1`
+    )
+    .get(normalizedHandle, title);
+  if (existingDupe) {
+    return res.status(409).json({
+      error: `You already have an agent called "${title}" on DiscoverHermes. Use PATCH to update it instead of re-submitting.`,
+      existing_id: existingDupe.id,
+      existing_url: `/use-cases/${existingDupe.id}`,
+    });
+  }
+
   const existingForHandle = db
     .prepare(
       `SELECT id, title FROM submissions
