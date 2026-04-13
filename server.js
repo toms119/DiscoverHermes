@@ -1753,6 +1753,12 @@ app.get('/api/stats', (_req, res) => {
     top_ai_score:
       one(`SELECT ROUND(MAX(ai_score), 1) AS n
            FROM submissions WHERE approved = 1 AND ai_score IS NOT NULL`).n || 0,
+    top_ai_score_id:
+      (one(`SELECT id FROM submissions WHERE approved = 1 AND ai_score IS NOT NULL ORDER BY ai_score DESC LIMIT 1`) || {}).id || null,
+    top_likes:
+      one(`SELECT COALESCE(MAX(likes), 0) AS n FROM submissions WHERE approved = 1`).n,
+    top_likes_id:
+      (one(`SELECT id FROM submissions WHERE approved = 1 ORDER BY likes DESC LIMIT 1`) || {}).id || null,
   };
 
   // Daily new submissions across ALL time — we'll slice the last 30 for

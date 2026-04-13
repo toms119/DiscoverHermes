@@ -111,6 +111,21 @@
         const key = node.dataset.stat;
         node.textContent = fmtNumber(data.totals[key]);
       });
+      // Make top AI score and most liked stats link to those agents
+      [['top_ai_score', 'top_ai_score_id'], ['top_likes', 'top_likes_id']].forEach(([stat, idKey]) => {
+        const agentId = data.totals[idKey];
+        if (!agentId) return;
+        const node = el.querySelector('[data-stat="' + stat + '"]');
+        if (!node) return;
+        const wrapper = node.closest('.headline-stat');
+        if (wrapper && !wrapper.dataset.linked) {
+          wrapper.dataset.linked = '1';
+          wrapper.style.cursor = 'pointer';
+          wrapper.addEventListener('click', () => {
+            location.href = '/use-cases/' + agentId;
+          });
+        }
+      });
       return data;
     } catch {
       return null;
