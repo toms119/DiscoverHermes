@@ -2152,6 +2152,7 @@ app.get('/submit/agent', (_req, res) => {
 app.get('/submit', serveHtml('submit.html'));
 app.get('/stats', serveHtml('stats.html'));
 app.get('/rankings', serveHtml('rankings.html'));
+app.get('/ecosystem', serveHtml('ecosystem.html'));
 // Detail page with dynamic OG meta tags — so sharing an agent link on
 // Twitter/Discord shows that agent's image, title, and pitch instead of
 // generic DiscoverHermes branding.

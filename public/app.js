@@ -915,7 +915,8 @@
   }
 
   // ==========================================================
-  // ACTIVITY FEED TICKER (feed page — horizontal scrolling banner)
+  // ACTIVITY FEED TICKER (feed page — pop-up/flash style)
+  // Shows 1-3 items at a time, holds them for a few seconds, then fades to next batch.
   // ==========================================================
   async function loadActivityFeed() {
     var container = document.getElementById('activity-feed');
@@ -925,14 +926,33 @@
       var items = await res.json();
       if (!Array.isArray(items) || items.length === 0) return;
       var icons = { submitted: '\uD83D\uDE80', scored: '\u2B50', commented: '\uD83D\uDCAC', trending: '\uD83D\uDD25' };
-      var html = items.map(function(item) {
+      // Build all item elements
+      var allHtml = items.map(function(item) {
         return '<a class="activity-item" href="' + escapeHtml(item.url) + '">'
           + '<span class="activity-icon">' + (icons[item.type] || '') + '</span>'
           + '<span>' + escapeHtml(item.text) + '</span>'
           + '</a>';
-      }).join('');
-      // Duplicate items for seamless infinite scroll loop
-      container.innerHTML = '<div class="activity-track">' + html + html + '</div>';
+      });
+      // Group into batches of 3
+      var batches = [];
+      for (var i = 0; i < allHtml.length; i += 3) {
+        batches.push(allHtml.slice(i, i + 3).join(''));
+      }
+      if (batches.length === 0) return;
+      container.innerHTML = '<div class="activity-track">' + batches[0] + '</div>';
+      var track = container.querySelector('.activity-track');
+      // Cycle through batches
+      var idx = 0;
+      setInterval(function() {
+        idx = (idx + 1) % batches.length;
+        track.classList.add('activity-fade-out');
+        setTimeout(function() {
+          track.innerHTML = batches[idx];
+          track.classList.remove('activity-fade-out');
+          track.classList.add('activity-fade-in');
+          setTimeout(function() { track.classList.remove('activity-fade-in'); }, 400);
+        }, 400);
+      }, 5000);
     } catch (e) {
       // silently ignore — ticker is non-critical
     }
