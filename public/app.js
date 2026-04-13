@@ -354,6 +354,7 @@
     // clicked a "Pinecone" chip on a detail page and landed on /?integration=Pinecone.
     const initialParams = new URLSearchParams(location.search);
     const PAGE_SIZE = 24;
+    let feedViewMode = 'grid';
     const state = {
       sort:        'trending',
       category:    '',
@@ -438,6 +439,34 @@
                 ${likeBtnHtml(item)}
               </div>
             </div>
+          </div>
+        </div>`;
+    }
+
+    function feedListRow(item) {
+      const scoreDisplay = item.ai_score != null
+        ? (Number.isInteger(item.ai_score) ? item.ai_score : item.ai_score.toFixed(1))
+        : null;
+      const aiPill = scoreDisplay
+        ? `<span class="card-ai-score"><span class="card-ai-num">${scoreDisplay}</span> AI</span>`
+        : '';
+      const img = item.image_url
+        ? `<img class="feed-row-img" src="${escapeHtml(item.image_url)}" alt="" />`
+        : `<div class="feed-row-img feed-row-placeholder">◆</div>`;
+      return `
+        <div class="feed-row" data-href="/use-cases/${item.id}" data-id="${item.id}">
+          ${img}
+          <div class="feed-row-body">
+            <h3 class="feed-row-title">${escapeHtml(item.title)}</h3>
+            <p class="feed-row-pitch">${escapeHtml(item.pitch || '')}</p>
+          </div>
+          <div class="feed-row-meta">
+            <span class="feed-row-author">${escapeHtml(item.twitter_handle ? '@' + item.twitter_handle : item.display_name || '')}</span>
+            ${item.category ? `<span class="feed-row-cat">${escapeHtml(item.category)}</span>` : ''}
+          </div>
+          <div class="feed-row-scores">
+            ${aiPill}
+            ${likeBtnHtml(item)}
           </div>
         </div>`;
     }
@@ -548,6 +577,7 @@
         }
 
         const cardsHtml = items.map((item, i) => {
+          if (feedViewMode === 'list') return feedListRow(item);
           const extra = trendingIds.has(item.id) ? 'is-trending' : '';
           const idx = state.offset + i;
           return cardHtml(item, extra).replace('<div class="card', `<div style="--i:${idx % PAGE_SIZE}" class="card`);
@@ -610,13 +640,10 @@
       toggleDislike(Number(btn.dataset.id), btn);
     });
 
-    // Card click — navigate to detail page.
-    // Cards are <div> (not <a>) to avoid invalid nested-anchor HTML which
-    // breaks DOM rendering.  We delegate clicks here instead.
+    // Card/row click — navigate to detail page.
     feedEl.addEventListener('click', (e) => {
-      // Skip if the click was on an interactive child (link, button)
       if (e.target.closest('a') || e.target.closest('button')) return;
-      const card = e.target.closest('.card[data-href]');
+      const card = e.target.closest('.card[data-href], .feed-row[data-href]');
       if (card) window.location.href = card.dataset.href;
     });
 
@@ -676,6 +703,22 @@
       }
     })();
 
+    // Feed view toggle (grid / list)
+    const feedToggle = document.getElementById('feed-view-toggle');
+    if (feedToggle) {
+      feedToggle.querySelectorAll('.view-toggle-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          if (btn.dataset.mode === feedViewMode) return;
+          feedViewMode = btn.dataset.mode;
+          feedToggle.querySelectorAll('.view-toggle-btn').forEach((b) => {
+            b.classList.toggle('active', b.dataset.mode === feedViewMode);
+          });
+          feedEl.classList.toggle('feed-list', feedViewMode === 'list');
+          loadFeed();
+        });
+      });
+    }
+
     // Sort tabs — only tabs that actually have a data-sort value.
     // The verified toggle shares the .tab class for visual consistency
     // but is an independent filter, not a sort, so it's handled below.
@@ -733,19 +776,16 @@
     // the feed. When there are more than 6 populated categories, the
     // overflow tucks behind a "More ↓" toggle.
     const catRow = document.getElementById('category-filters');
-    const VISIBLE_CAP = 6;
     fetch('/api/meta').then((r) => r.json()).then((meta) => {
       const populated = Array.isArray(meta.category_counts) ? meta.category_counts : [];
-      // Hide the whole row if nothing is populated yet — no point rendering
-      // just an "All" pill with nothing to filter to.
       if (populated.length === 0) {
         catRow.style.display = 'none';
         return;
       }
 
-      function makePill(name, count, cls = 'pill') {
+      function makePill(name, count) {
         const btn = document.createElement('button');
-        btn.className = cls;
+        btn.className = 'pill';
         btn.dataset.category = name || '';
         btn.innerHTML = name
           ? `${escapeHtml(name)}<span class="pill-count">${count}</span>`
@@ -753,36 +793,25 @@
         return btn;
       }
 
-      // "All" is always first and always active on load.
       const allBtn = makePill('', 0);
       allBtn.classList.add('active');
       catRow.appendChild(allBtn);
+      populated.forEach((c) => catRow.appendChild(makePill(c.name, c.count)));
 
-      const visible = populated.slice(0, VISIBLE_CAP);
-      const overflow = populated.slice(VISIBLE_CAP);
-      visible.forEach((c) => catRow.appendChild(makePill(c.name, c.count)));
-
-      // Overflow toggle — only if there's something to hide.
-      if (overflow.length > 0) {
+      // "More" toggle — expands the single row to show all categories
+      if (populated.length > 4) {
         const moreBtn = document.createElement('button');
         moreBtn.className = 'pill pill-more';
         moreBtn.type = 'button';
-        moreBtn.textContent = `More (${overflow.length}) ↓`;
+        moreBtn.textContent = 'All categories ↓';
+        moreBtn.style.flexShrink = '0';
         catRow.appendChild(moreBtn);
 
-        const hiddenPills = overflow.map((c) => {
-          const pill = makePill(c.name, c.count, 'pill pill-hidden');
-          catRow.appendChild(pill);
-          return pill;
-        });
-
         moreBtn.addEventListener('click', () => {
-          const nowOpen = !moreBtn.classList.contains('open');
+          const nowOpen = !catRow.classList.contains('pill-row-expanded');
+          catRow.classList.toggle('pill-row-expanded', nowOpen);
           moreBtn.classList.toggle('open', nowOpen);
-          hiddenPills.forEach((p) => p.classList.toggle('pill-hidden', !nowOpen));
-          moreBtn.textContent = nowOpen
-            ? 'Less ↑'
-            : `More (${overflow.length}) ↓`;
+          moreBtn.textContent = nowOpen ? 'Less ↑' : 'All categories ↓';
         });
       }
 
