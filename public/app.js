@@ -713,7 +713,15 @@
           feedToggle.querySelectorAll('.view-toggle-btn').forEach((b) => {
             b.classList.toggle('active', b.dataset.mode === feedViewMode);
           });
-          feedEl.classList.toggle('feed-list', feedViewMode === 'list');
+          if (feedViewMode === 'list') {
+            feedEl.classList.add('feed-list');
+          } else {
+            feedEl.classList.remove('feed-list');
+          }
+          // Reset feed for fresh render in new mode
+          state.offset = 0;
+          state.allLoaded = false;
+          feedEl.innerHTML = '';
           loadFeed();
         });
       });
