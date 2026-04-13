@@ -961,6 +961,8 @@ a { color: inherit; text-decoration: none; }
   display: flex;
   flex-direction: column;
   gap: 0;
+  max-width: 100%;
+  padding: 8px 24px 64px;
 }
 .feed-row {
   display: flex;
