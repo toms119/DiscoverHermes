@@ -529,12 +529,14 @@ a { color: inherit; text-decoration: none; }
 .activity-feed {
   max-width: var(--maxw);
   margin: 8px auto 16px;
-  padding: 0;
+  padding: 0 24px;
+  box-sizing: border-box;
   position: relative;
   height: 32px;
   display: flex;
   align-items: center;
   gap: 6px;
+  overflow: hidden;
 }
 .activity-feed:empty { display: none; }
 .activity-slot {
