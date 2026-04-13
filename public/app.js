@@ -915,8 +915,9 @@
   }
 
   // ==========================================================
-  // ACTIVITY FEED TICKER (feed page — pop-up/flash style)
-  // Shows 1-3 items at a time, holds them for a few seconds, then fades to next batch.
+  // ACTIVITY FEED TICKER (feed page — pop-up boxes)
+  // Shows 2 orange pill-boxes at a time. Each box pops in with a stagger,
+  // holds for a few seconds, then the pair fades out and the next 2 appear.
   // ==========================================================
   async function loadActivityFeed() {
     var container = document.getElementById('activity-feed');
@@ -926,33 +927,48 @@
       var items = await res.json();
       if (!Array.isArray(items) || items.length === 0) return;
       var icons = { submitted: '\uD83D\uDE80', scored: '\u2B50', commented: '\uD83D\uDCAC', trending: '\uD83D\uDD25' };
-      // Build all item elements
-      var allHtml = items.map(function(item) {
+
+      // Create two fixed slots inside the container
+      container.innerHTML = '<div class="activity-slot" id="activity-slot-0"></div>'
+        + '<div class="activity-slot" id="activity-slot-1"></div>';
+      var slot0 = document.getElementById('activity-slot-0');
+      var slot1 = document.getElementById('activity-slot-1');
+
+      function renderItem(item) {
         return '<a class="activity-item" href="' + escapeHtml(item.url) + '">'
           + '<span class="activity-icon">' + (icons[item.type] || '') + '</span>'
           + '<span>' + escapeHtml(item.text) + '</span>'
           + '</a>';
-      });
-      // Group into batches of 3
-      var batches = [];
-      for (var i = 0; i < allHtml.length; i += 3) {
-        batches.push(allHtml.slice(i, i + 3).join(''));
       }
-      if (batches.length === 0) return;
-      container.innerHTML = '<div class="activity-track">' + batches[0] + '</div>';
-      var track = container.querySelector('.activity-track');
-      // Cycle through batches
+
       var idx = 0;
-      setInterval(function() {
-        idx = (idx + 1) % batches.length;
-        track.classList.add('activity-fade-out');
+      function showPair() {
+        var a = items[idx % items.length];
+        var b = items[(idx + 1) % items.length];
+        // Pop in slot 0
+        slot0.innerHTML = renderItem(a);
+        slot0.classList.remove('pop-out');
+        slot0.classList.add('pop-in');
+        // Pop in slot 1 with slight delay
         setTimeout(function() {
-          track.innerHTML = batches[idx];
-          track.classList.remove('activity-fade-out');
-          track.classList.add('activity-fade-in');
-          setTimeout(function() { track.classList.remove('activity-fade-in'); }, 400);
-        }, 400);
-      }, 5000);
+          slot1.innerHTML = renderItem(b);
+          slot1.classList.remove('pop-out');
+          slot1.classList.add('pop-in');
+        }, 200);
+        // After hold time, fade both out
+        setTimeout(function() {
+          slot0.classList.remove('pop-in');
+          slot0.classList.add('pop-out');
+          slot1.classList.remove('pop-in');
+          slot1.classList.add('pop-out');
+        }, 4500);
+        // After fade-out completes, show next pair
+        setTimeout(function() {
+          idx = (idx + 2) % items.length;
+          showPair();
+        }, 5000);
+      }
+      showPair();
     } catch (e) {
       // silently ignore — ticker is non-critical
     }

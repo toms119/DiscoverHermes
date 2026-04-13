@@ -525,51 +525,65 @@ a { color: inherit; text-decoration: none; }
   line-height: 1.4;
 }
 
-/* ---------- activity feed ticker (flash/pop-up) ---------- */
+/* ---------- activity feed ticker (pop-up boxes) ---------- */
 .activity-feed {
   max-width: var(--maxw);
   margin: 8px auto 16px;
   padding: 0 24px;
-  overflow: hidden;
   position: relative;
-  min-height: 36px;
+  height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-top: 1px solid var(--border);
-  border-bottom: 1px solid var(--border);
+  gap: 12px;
 }
 .activity-feed:empty { display: none; }
-.activity-track {
+.activity-slot {
+  flex: 1;
+  max-width: 480px;
+  min-height: 34px;
   display: flex;
-  gap: 24px;
+  align-items: center;
   justify-content: center;
-  flex-wrap: wrap;
-  opacity: 1;
-  transition: opacity 0.4s ease;
+  opacity: 0;
+  transform: translateY(6px) scale(0.97);
 }
-.activity-track.activity-fade-out { opacity: 0; }
-.activity-track.activity-fade-in  { animation: activity-pop 0.4s ease; }
+.activity-slot.pop-in {
+  animation: slot-pop-in 0.35s ease forwards;
+}
+.activity-slot.pop-out {
+  animation: slot-pop-out 0.35s ease forwards;
+}
 .activity-item {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   font-size: 12px;
-  color: var(--text-dim);
-  padding: 4px 10px;
+  color: #fff;
+  background: rgba(255, 140, 50, 0.15);
+  border: 1px solid rgba(255, 140, 50, 0.35);
+  padding: 6px 14px;
   cursor: pointer;
   text-decoration: none;
-  border-radius: 999px;
-  transition: color 0.15s, background 0.15s;
+  border-radius: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  transition: background 0.15s, border-color 0.15s;
 }
 .activity-item:hover {
-  color: var(--accent);
-  background: var(--accent-soft);
+  background: rgba(255, 140, 50, 0.28);
+  border-color: rgba(255, 140, 50, 0.6);
 }
 .activity-icon { font-size: 14px; line-height: 1; }
-@keyframes activity-pop {
-  from { opacity: 0; transform: translateY(4px); }
-  to   { opacity: 1; transform: translateY(0); }
+@keyframes slot-pop-in {
+  from { opacity: 0; transform: translateY(6px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes slot-pop-out {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to   { opacity: 0; transform: translateY(-4px) scale(0.97); }
 }
 
 /* ---------- headline stats band ---------- */
