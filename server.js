@@ -1750,6 +1750,9 @@ app.get('/api/stats', (_req, res) => {
     avg_ai_score:
       one(`SELECT ROUND(AVG(ai_score), 1) AS n
            FROM submissions WHERE approved = 1 AND ai_score IS NOT NULL`).n || 0,
+    top_ai_score:
+      one(`SELECT ROUND(MAX(ai_score), 1) AS n
+           FROM submissions WHERE approved = 1 AND ai_score IS NOT NULL`).n || 0,
   };
 
   // Daily new submissions across ALL time — we'll slice the last 30 for
