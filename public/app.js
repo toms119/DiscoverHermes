@@ -915,9 +915,10 @@
   }
 
   // ==========================================================
-  // ACTIVITY FEED TICKER (feed page — pop-up boxes)
-  // Shows 2 orange pill-boxes at a time. Each box pops in with a stagger,
-  // holds for a few seconds, then the pair fades out and the next 2 appear.
+  // ACTIVITY FEED TICKER (feed page — independent pop-up slots)
+  // One single-line-height bar. 3 slots inside, each independently cycles
+  // through items on its own timer so they pop in/out at different times.
+  // Each slot gets a color based on the item type.
   // ==========================================================
   async function loadActivityFeed() {
     var container = document.getElementById('activity-feed');
@@ -927,48 +928,54 @@
       var items = await res.json();
       if (!Array.isArray(items) || items.length === 0) return;
       var icons = { submitted: '\uD83D\uDE80', scored: '\u2B50', commented: '\uD83D\uDCAC', trending: '\uD83D\uDD25' };
+      // Each type gets a distinct hue
+      var colors = {
+        submitted: 'activity-color-orange',
+        scored:    'activity-color-gold',
+        commented: 'activity-color-blue',
+        trending:  'activity-color-red'
+      };
 
-      // Create two fixed slots inside the container
-      container.innerHTML = '<div class="activity-slot" id="activity-slot-0"></div>'
-        + '<div class="activity-slot" id="activity-slot-1"></div>';
-      var slot0 = document.getElementById('activity-slot-0');
-      var slot1 = document.getElementById('activity-slot-1');
+      // Create 3 independent slots
+      container.innerHTML = '<div class="activity-slot" id="aslot-0"></div>'
+        + '<div class="activity-slot" id="aslot-1"></div>'
+        + '<div class="activity-slot" id="aslot-2"></div>';
 
-      function renderItem(item) {
-        return '<a class="activity-item" href="' + escapeHtml(item.url) + '">'
-          + '<span class="activity-icon">' + (icons[item.type] || '') + '</span>'
-          + '<span>' + escapeHtml(item.text) + '</span>'
-          + '</a>';
+      // Each slot runs its own cycle through the items, offset so they don't sync
+      function runSlot(slotId, startIdx, holdMs, pauseMs) {
+        var slot = document.getElementById('aslot-' + slotId);
+        if (!slot) return;
+        var idx = startIdx;
+
+        function showNext() {
+          var item = items[idx % items.length];
+          var cls = colors[item.type] || 'activity-color-orange';
+          slot.innerHTML = '<a class="activity-item ' + cls + '" href="' + escapeHtml(item.url) + '">'
+            + '<span class="activity-icon">' + (icons[item.type] || '') + '</span>'
+            + '<span>' + escapeHtml(item.text) + '</span>'
+            + '</a>';
+          slot.classList.remove('slot-out');
+          slot.classList.add('slot-in');
+
+          // Hold, then fade out
+          setTimeout(function() {
+            slot.classList.remove('slot-in');
+            slot.classList.add('slot-out');
+            // After fade-out, brief empty gap, then next item
+            setTimeout(function() {
+              idx = (idx + 1) % items.length;
+              showNext();
+            }, pauseMs);
+          }, holdMs);
+        }
+        showNext();
       }
 
-      var idx = 0;
-      function showPair() {
-        var a = items[idx % items.length];
-        var b = items[(idx + 1) % items.length];
-        // Pop in slot 0
-        slot0.innerHTML = renderItem(a);
-        slot0.classList.remove('pop-out');
-        slot0.classList.add('pop-in');
-        // Pop in slot 1 with slight delay
-        setTimeout(function() {
-          slot1.innerHTML = renderItem(b);
-          slot1.classList.remove('pop-out');
-          slot1.classList.add('pop-in');
-        }, 200);
-        // After hold time, fade both out
-        setTimeout(function() {
-          slot0.classList.remove('pop-in');
-          slot0.classList.add('pop-out');
-          slot1.classList.remove('pop-in');
-          slot1.classList.add('pop-out');
-        }, 4500);
-        // After fade-out completes, show next pair
-        setTimeout(function() {
-          idx = (idx + 2) % items.length;
-          showPair();
-        }, 5000);
-      }
-      showPair();
+      // Stagger starts: slot 0 starts immediately, slot 1 after 1.5s, slot 2 after 3s
+      // Each has slightly different hold times so they drift apart naturally
+      runSlot(0, 0, 4000, 600);
+      setTimeout(function() { runSlot(1, Math.floor(items.length / 3), 4800, 700); }, 1500);
+      setTimeout(function() { runSlot(2, Math.floor(items.length * 2 / 3), 5200, 800); }, 3000);
     } catch (e) {
       // silently ignore — ticker is non-critical
     }
