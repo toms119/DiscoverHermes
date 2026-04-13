@@ -701,24 +701,25 @@
     })();
 
     // Feed view toggle (grid / list)
+    // Ensure feed always starts clean — no leftover classes
+    feedEl.classList.remove('feed-list');
     const feedToggle = document.getElementById('feed-view-toggle');
     if (feedToggle) {
       feedToggle.querySelectorAll('.view-toggle-btn').forEach((btn) => {
         btn.addEventListener('click', () => {
-          if (btn.dataset.mode === feedViewMode) return;
-          feedViewMode = btn.dataset.mode;
+          var mode = btn.dataset.mode;
+          if (mode === feedViewMode) return;
+          feedViewMode = mode;
           feedToggle.querySelectorAll('.view-toggle-btn').forEach((b) => {
             b.classList.toggle('active', b.dataset.mode === feedViewMode);
           });
-          if (feedViewMode === 'list') {
-            feedEl.classList.add('feed-list');
-          } else {
-            feedEl.classList.remove('feed-list');
-          }
-          // Reset feed for fresh render in new mode
+          // Apply class BEFORE clearing/reloading
+          feedEl.classList.remove('feed-list');
+          if (feedViewMode === 'list') feedEl.classList.add('feed-list');
+          // Full reset
           state.offset = 0;
           state.allLoaded = false;
-          feedEl.innerHTML = '';
+          feedEl.innerHTML = '<div class="loading">Loading\u2026</div>';
           loadFeed();
         });
       });
@@ -891,7 +892,7 @@
           // Prepend in reverse so the newest item ends up on top.
           for (const item of fresh.reverse()) {
             const wrapper = document.createElement('div');
-            wrapper.innerHTML = cardHtml(item, 'just-arrived');
+            wrapper.innerHTML = feedViewMode === 'list' ? feedListRow(item) : cardHtml(item, 'just-arrived');
             const node = wrapper.firstElementChild;
             if (node) feedEl.insertBefore(node, feedEl.firstChild);
           }
