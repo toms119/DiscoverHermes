@@ -955,12 +955,12 @@ a { color: inherit; text-decoration: none; }
   animation: fadeIn 0.3s ease;
 }
 
-/* Feed list mode — overrides grid to single column rows */
+/* Feed list mode — overrides grid to single column rows.
+   Specificity (2 classes) naturally beats the base .feed rule (1 class). */
 .feed.feed-list {
-  display: flex !important;
+  display: flex;
   flex-direction: column;
   gap: 0;
-  grid-template-columns: none;
 }
 .feed-row {
   display: flex;

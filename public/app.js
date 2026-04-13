@@ -505,15 +505,27 @@
       if (isFirstPage) {
         // Skeleton loading cards — shimmer while the API responds
         feedEl.classList.remove('feed-loaded');
-        feedEl.innerHTML = Array.from({ length: 6 }, () => `
-          <div class="card skeleton">
-            <div class="card-media skeleton-shimmer"></div>
-            <div class="card-body">
-              <div class="skeleton-line" style="width:80%"></div>
-              <div class="skeleton-line" style="width:60%"></div>
-              <div class="skeleton-line short" style="width:40%"></div>
-            </div>
-          </div>`).join('');
+        // Re-sync view mode class before rendering skeletons
+        if (feedViewMode === 'list') {
+          feedEl.classList.add('feed-list');
+        } else {
+          feedEl.classList.remove('feed-list');
+        }
+        if (feedViewMode === 'list') {
+          feedEl.innerHTML = Array.from({ length: 8 }, () =>
+            `<div class="feed-row skeleton"><div class="feed-row-img feed-row-placeholder skeleton-shimmer"></div><div class="feed-row-body"><div class="skeleton-line" style="width:60%"></div><div class="skeleton-line short" style="width:30%"></div></div></div>`
+          ).join('');
+        } else {
+          feedEl.innerHTML = Array.from({ length: 6 }, () => `
+            <div class="card skeleton">
+              <div class="card-media skeleton-shimmer"></div>
+              <div class="card-body">
+                <div class="skeleton-line" style="width:80%"></div>
+                <div class="skeleton-line" style="width:60%"></div>
+                <div class="skeleton-line short" style="width:40%"></div>
+              </div>
+            </div>`).join('');
+        }
         renderFilterBanner();
       }
 
@@ -589,6 +601,12 @@
           feedEl.insertAdjacentHTML('beforeend', cardsHtml);
         }
         feedEl.classList.add('feed-loaded');
+        // Defensive: always re-sync view mode class after render
+        if (feedViewMode === 'list') {
+          feedEl.classList.add('feed-list');
+        } else {
+          feedEl.classList.remove('feed-list');
+        }
 
         // Append sentinel for infinite scroll if more pages exist
         if (!state.allLoaded) {
