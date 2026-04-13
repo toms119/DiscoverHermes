@@ -453,16 +453,13 @@
       const img = item.image_url
         ? `<img class="feed-row-img" src="${escapeHtml(item.image_url)}" alt="" />`
         : `<div class="feed-row-img feed-row-placeholder">◆</div>`;
+      const author = escapeHtml(item.twitter_handle ? '@' + item.twitter_handle : item.display_name || '');
       return `
         <div class="feed-row" data-href="/use-cases/${item.id}" data-id="${item.id}">
           ${img}
           <div class="feed-row-body">
-            <h3 class="feed-row-title">${escapeHtml(item.title)}</h3>
-            <p class="feed-row-pitch">${escapeHtml(item.pitch || '')}</p>
-          </div>
-          <div class="feed-row-meta">
-            <span class="feed-row-author">${escapeHtml(item.twitter_handle ? '@' + item.twitter_handle : item.display_name || '')}</span>
-            ${item.category ? `<span class="feed-row-cat">${escapeHtml(item.category)}</span>` : ''}
+            <span class="feed-row-title">${escapeHtml(item.title)}</span>
+            <span class="feed-row-author">${author}</span>
           </div>
           <div class="feed-row-scores">
             ${aiPill}
