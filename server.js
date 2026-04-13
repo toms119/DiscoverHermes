@@ -2115,6 +2115,83 @@ app.get('/api/activity', (_req, res) => {
   }
 });
 
+// GET /api/badge/:id.svg — dynamic SVG badge showing AI score, grade, rank.
+// Embeddable in GitHub READMEs, docs, websites. Cached for 5 minutes.
+app.get('/api/badge/:id.svg', (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return res.status(400).type('text/plain').send('invalid id');
+  const row = db.prepare(
+    'SELECT title, ai_score, ai_grade, likes, dislikes FROM submissions WHERE id = ? AND approved = 1'
+  ).get(id);
+  if (!row) return res.status(404).type('text/plain').send('not found');
+
+  const score = row.ai_score != null ? Math.round(row.ai_score) : null;
+  const grade = row.ai_grade || null;
+  const netLikes = (row.likes || 0) - (row.dislikes || 0);
+
+  // Rank among scored agents
+  let rankText = '';
+  if (score != null) {
+    const rankRow = db.prepare(
+      'SELECT 1 + COUNT(*) AS rank FROM submissions WHERE approved = 1 AND ai_score > ?'
+    ).get(score);
+    const totalRow = db.prepare(
+      'SELECT COUNT(*) AS n FROM submissions WHERE approved = 1 AND ai_score IS NOT NULL'
+    ).get();
+    rankText = `#${rankRow.rank} of ${totalRow.n}`;
+  }
+
+  // Build label segments: "DiscoverHermes | AI Score: 87 (A) | #3 of 50 | ♥ 12"
+  const segments = ['DiscoverHermes'];
+  if (score != null) {
+    segments.push(`AI Score: ${score}` + (grade ? ` (${grade})` : ''));
+  } else {
+    segments.push('Unscored');
+  }
+  if (rankText) segments.push(rankText);
+  if (netLikes > 0) segments.push(`\u2665 ${netLikes}`);
+
+  // Grade → color mapping
+  const gradeColors = {
+    S: '#f59e0b', A: '#22c55e', B: '#3b82f6', C: '#a78bfa', D: '#94a3b8'
+  };
+  const accentColor = gradeColors[grade] || '#f97316';
+
+  // Measure segment widths (approximate: 6.8px per char at 11px font)
+  const charW = 6.8;
+  const segPad = 10; // padding inside each segment
+  const segGap = 1;  // gap between segments
+  const widths = segments.map(s => Math.ceil(s.length * charW + segPad * 2));
+  const totalW = widths.reduce((a, b) => a + b, 0) + segGap * (segments.length - 1);
+  const h = 22;
+
+  // Build SVG
+  let x = 0;
+  let rects = '';
+  let texts = '';
+  segments.forEach((seg, i) => {
+    const w = widths[i];
+    const bg = i === 0 ? '#2d2d2d' : '#3d3d3d';
+    const fill = i === 0 ? '#ccc' : '#fff';
+    const r = i === 0 ? 'rx="4" ry="4"' : (i === segments.length - 1 ? 'rx="4" ry="4"' : '');
+    rects += `<rect x="${x}" y="0" width="${w}" height="${h}" fill="${bg}" ${r}/>`;
+    texts += `<text x="${x + w / 2}" y="15" fill="${fill}" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" font-size="11" text-anchor="middle">${seg.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</text>`;
+    x += w + segGap;
+  });
+  // Accent bar at bottom
+  rects += `<rect x="0" y="${h - 3}" width="${totalW}" height="3" fill="${accentColor}" rx="0" ry="0" opacity="0.7"/>`;
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${totalW}" height="${h}" role="img" aria-label="${segments.join(' | ')}">
+  <title>${segments.join(' | ')}</title>
+  ${rects}
+  ${texts}
+</svg>`;
+
+  res.set('Content-Type', 'image/svg+xml');
+  res.set('Cache-Control', 'public, max-age=300');
+  res.send(svg);
+});
+
 // ---------- agent shortcut ----------
 // GET /submit/agent — returns the raw submission prompt as plain text so
 // a Hermes agent that visits this URL can immediately read and follow it.

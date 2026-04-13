@@ -1604,8 +1604,11 @@
           <div class="author-posted muted">Posted ${escapeHtml(fmtDate(item.created_at) || (item.created_at || '').split(' ')[0] || '')}</div>
         </div>`;
 
-      // Engagement card — like button + share button
+      // Engagement card — like button + share button + badge button
       const shareHref = item.share_tweet_url ? escapeHtml(item.share_tweet_url) : '#';
+      const badgeUrl = 'https://discoverhermes.com/api/badge/' + item.id + '.svg';
+      const cardUrl = 'https://discoverhermes.com/use-cases/' + item.id;
+      const badgeMarkdown = '[![DiscoverHermes](' + badgeUrl + ')](' + cardUrl + ')';
       const engagementCard = `
         <div class="side-card engagement-card">
           <div class="engagement-row">
@@ -1613,6 +1616,17 @@
             <a class="share-btn" href="${shareHref}" target="_blank" rel="noopener" title="Share on X">
               <span class="share-icon">↗</span> Share
             </a>
+            <button class="badge-btn" type="button" title="Get embeddable badge for your README">
+              <span class="badge-icon">◆</span> Badge
+            </button>
+          </div>
+          <div class="badge-popover" style="display:none">
+            <p class="badge-popover-label">Add this to your GitHub README:</p>
+            <div class="badge-preview"><img src="/api/badge/${item.id}.svg" alt="badge preview" /></div>
+            <div class="badge-snippet-row">
+              <code class="badge-snippet">${escapeHtml(badgeMarkdown)}</code>
+              <button class="copy-btn badge-copy" data-copy-text="${escapeHtml(badgeMarkdown)}" type="button">copy</button>
+            </div>
           </div>
         </div>`;
 
@@ -2459,6 +2473,24 @@
         // Draw score history sparkline
         const canvas = document.getElementById('score-history-chart');
         if (canvas) drawScoreHistory(canvas, item);
+        // Badge popover toggle
+        const badgeBtn = root.querySelector('.badge-btn');
+        const badgePop = root.querySelector('.badge-popover');
+        if (badgeBtn && badgePop) {
+          badgeBtn.addEventListener('click', () => {
+            badgePop.style.display = badgePop.style.display === 'none' ? 'block' : 'none';
+          });
+        }
+        // Re-bind copy buttons for dynamically added elements
+        root.querySelectorAll('.copy-btn').forEach((btn) => {
+          btn.addEventListener('click', async () => {
+            const text = btn.dataset.copyText;
+            if (!text) return;
+            try { await navigator.clipboard.writeText(text); } catch {}
+            btn.textContent = 'copied!';
+            setTimeout(() => { btn.textContent = 'copy'; }, 1500);
+          });
+        });
       })
       .catch(() => {
         root.innerHTML = `<div class="empty">Couldn't load this use case. It may have been removed.</div>`;
