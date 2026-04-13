@@ -28,6 +28,12 @@ const VERIFY_ENABLED        = !!(STRIPE_WEBHOOK_SECRET && STRIPE_PAYMENT_LINK);
 // Canonical public URL for the portal (used in share links). Falls back to
 // the Railway domain if PUBLIC_URL isn't set. Always no trailing slash.
 const PUBLIC_URL = (process.env.PUBLIC_URL || 'https://discoverhermes.com').replace(/\/+$/, '');
+
+// Buffer auto-tweet: when both env vars are set, new agents get announced
+// ~30 min after submission (once they have an AI score).
+const BUFFER_ACCESS_TOKEN = process.env.BUFFER_ACCESS_TOKEN || null;
+const BUFFER_PROFILE_ID   = process.env.BUFFER_PROFILE_ID   || null;
+const TWEET_DELAY_MS      = 30 * 60 * 1000; // 30 minutes
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
@@ -195,6 +201,7 @@ const DESIRED_COLUMNS = {
   multi_agent:           'INTEGER',       // 0/1: delegates to sub-agents
   output_format:         'TEXT',          // structured-data | natural-language | code | mixed
   tools_used:            'TEXT',          // JSON array of tool names
+  tweeted_at:            'TEXT',          // timestamp when Buffer tweet was sent
 };
 const existingCols = new Set(
   db.prepare(`PRAGMA table_info(submissions)`).all().map((c) => c.name)
@@ -2329,6 +2336,96 @@ async function gracefulShutdown(signal) {
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
+// ---------------------------------------------------------------------------
+// Auto-tweet via Buffer: announce new agents ~30 min after submission
+// (gives time for AI scoring to land). Runs every 5 minutes.
+// ---------------------------------------------------------------------------
+function composeTweet(agent) {
+  const name = agent.title;
+  const pitch = agent.pitch || agent.description || '';
+  const score = agent.ai_score != null
+    ? (Number.isInteger(agent.ai_score) ? agent.ai_score : Number(agent.ai_score).toFixed(1))
+    : null;
+  const handle = agent.twitter_handle ? `@${agent.twitter_handle.replace(/^@/, '')}` : null;
+  const url = `${PUBLIC_URL}/use-cases/${agent.id}`;
+
+  // Build tweet — Twitter's 280-char limit. We'll be concise.
+  let tweet = `${name}`;
+  if (pitch) {
+    // Trim pitch to keep total under ~230 chars (leave room for score + handle + URL)
+    const maxPitch = 140;
+    const shortPitch = pitch.length > maxPitch ? pitch.slice(0, maxPitch - 1) + '…' : pitch;
+    tweet += ` — ${shortPitch}`;
+  }
+  tweet += '\n';
+  if (score) tweet += `\nAI Score: ${score}/100`;
+  if (handle) tweet += `\nSubmitted by ${handle}`;
+  tweet += `\n\n${url}`;
+
+  return tweet;
+}
+
+async function sendBufferTweet(agent) {
+  const text = composeTweet(agent);
+  const body = {
+    text,
+    profile_ids: [BUFFER_PROFILE_ID],
+  };
+  // Attach the agent's image if it has one
+  if (agent.image_url) {
+    body.media = { photo: agent.image_url };
+  }
+
+  const res = await fetch('https://api.bufferapp.com/1/updates/create.json', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${BUFFER_ACCESS_TOKEN}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Buffer API ${res.status}: ${err}`);
+  }
+  return res.json();
+}
+
+async function checkPendingTweets() {
+  if (!BUFFER_ACCESS_TOKEN || !BUFFER_PROFILE_ID) return;
+
+  const cutoff = new Date(Date.now() - TWEET_DELAY_MS).toISOString();
+  const pending = db.prepare(`
+    SELECT * FROM submissions
+    WHERE approved = 1
+      AND tweeted_at IS NULL
+      AND ai_score IS NOT NULL
+      AND created_at <= ?
+    ORDER BY created_at ASC
+    LIMIT 3
+  `).all(cutoff);
+
+  for (const agent of pending) {
+    try {
+      await sendBufferTweet(agent);
+      db.prepare('UPDATE submissions SET tweeted_at = datetime(\'now\') WHERE id = ?').run(agent.id);
+      console.log(`[tweet] Announced agent #${agent.id}: ${agent.title}`);
+    } catch (err) {
+      console.error(`[tweet] Failed for agent #${agent.id}:`, err.message);
+      // Don't mark as tweeted — will retry next cycle
+    }
+  }
+}
+
+// Check every 5 minutes for agents that need announcing
+setInterval(checkPendingTweets, 5 * 60 * 1000);
+
 app.listen(PORT, () => {
   console.log(`DiscoverHermes listening on http://localhost:${PORT}`);
+  // Run first check shortly after startup
+  if (BUFFER_ACCESS_TOKEN && BUFFER_PROFILE_ID) {
+    setTimeout(checkPendingTweets, 10_000);
+    console.log('  Buffer auto-tweet enabled');
+  }
 });
