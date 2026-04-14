@@ -1901,30 +1901,30 @@ app.get('/api/stats', (_req, res) => {
 
 // ---------- github stats: auto-refresh daily ----------
 // Shared fetch logic used by both the daily auto-pull and the admin endpoint.
+// Uses GitHub API directly (star-history.com was unreliable)
 async function refreshGitHubStats() {
-  const resp = await fetch('https://www.star-history.com/nousresearch/hermes-agent', {
-    headers: { 'User-Agent': 'DiscoverHermes/1.0' },
+  // Fetch from GitHub API directly
+  const resp = await fetch('https://api.github.com/repos/NousResearch/hermes-agent', {
+    headers: {
+      'User-Agent': 'DiscoverHermes/1.0',
+      'Accept': 'application/vnd.github.v3+json',
+    },
   });
-  if (!resp.ok) throw new Error(`star-history returned ${resp.status}`);
-  const html = await resp.text();
+  if (!resp.ok) throw new Error(`GitHub API returned ${resp.status}`);
+  const data = await resp.json();
 
-  const parseK = (m) => m ? Math.round(parseFloat(m[1]) * 1000) : 0;
-  const starsMatch = html.match(/([\d.]+)k\s*Stars/i);
-  const forksMatch = html.match(/([\d.]+)k\s*Forks/i);
-  const contributorsMatch = html.match(/(\d+)\s*Contributors/i);
-  const rankMatch = html.match(/Global Rank\s*#(\d+)/i) || html.match(/#(\d+)\s*hermes-agent/i);
-  const weeklyStarsMatch = html.match(/New stars\s*\+?([\d.]+k)/i) || html.match(/\+([\d.]+k)\s*stars/i);
-  const pushesMatch = html.match(/(\d+)\s*Pushes/i);
-  const issuesMatch = html.match(/Issues closed\s*(\d+)/i);
+  // Get previous stats for weekly delta calculation
+  const prev = db.prepare(`SELECT stars FROM github_stats ORDER BY date DESC LIMIT 1`).get();
+  const prevStars = prev ? prev.stars : 0;
 
   const stats = {
-    stars: parseK(starsMatch),
-    forks: parseK(forksMatch),
-    contributors: contributorsMatch ? parseInt(contributorsMatch[1]) : 0,
-    global_rank: rankMatch ? parseInt(rankMatch[1]) : null,
-    weekly_stars: parseK(weeklyStarsMatch),
-    weekly_pushes: pushesMatch ? parseInt(pushesMatch[1]) : 0,
-    weekly_issues_closed: issuesMatch ? parseInt(issuesMatch[1]) : 0,
+    stars: data.stargazers_count || 0,
+    forks: data.forks_count || 0,
+    contributors: 0, // GitHub API doesn't include this in repo endpoint
+    global_rank: null, // Not available from GitHub API
+    weekly_stars: prevStars > 0 ? Math.max(0, data.stargazers_count - prevStars) : 0,
+    weekly_pushes: 0, // Not available from GitHub API
+    weekly_issues_closed: data.open_issues_count || 0,
   };
 
   const today = new Date().toISOString().slice(0, 10);
