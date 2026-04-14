@@ -1092,7 +1092,7 @@
     const track = document.getElementById('spotlight-track');
     if (!section || !track) return;
     try {
-      const res = await fetch('/api/submissions?sort=top&limit=5');
+      const res = await fetch('/api/submissions?sort=score&limit=5');
       const items = await res.json();
       if (!Array.isArray(items) || items.length === 0) {
         section.style.display = 'none';
