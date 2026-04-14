@@ -154,6 +154,7 @@ const DESIRED_COLUMNS = {
   hours_used:            'INTEGER',
   approx_monthly_tokens: 'INTEGER',
   tokens_total:          'INTEGER',       // cumulative lifetime tokens; agents can PATCH this
+  cron_jobs:             'INTEGER',       // count of active cron jobs; agents can PATCH this
   total_interactions:    'INTEGER',       // total conversations/sessions handled
   active_users:          'INTEGER',       // unique people using this agent
   tasks_completed:       'INTEGER',       // specific tasks completed to success
@@ -961,6 +962,7 @@ app.post('/api/submissions', smallJson, submitLimiter, submitLimiterDaily, (req,
     hours_used:            cleanInt(b.hours_used, 1_000_000),
     approx_monthly_tokens: cleanInt(b.approx_monthly_tokens, 1_000_000_000_000),
     tokens_total:          cleanInt(b.tokens_total, 1_000_000_000_000_000),
+    cron_jobs:             cleanInt(b.cron_jobs, 1_000_000),
     total_interactions:    cleanInt(b.total_interactions, 1_000_000_000),
     active_users:          cleanInt(b.active_users, 1_000_000_000),
     tasks_completed:       cleanInt(b.tasks_completed, 1_000_000_000),
@@ -1053,7 +1055,7 @@ const EDITABLE_FIELDS = new Set([
   'title', 'pitch', 'story', 'image_url', 'image_prompt',
   'display_name', 'website', 'agent_framework',
   'total_interactions', 'active_users', 'tasks_completed',
-  'runs_completed', 'hours_used', 'tokens_total', 'time_saved_per_week',
+  'runs_completed', 'hours_used', 'tokens_total', 'cron_jobs', 'time_saved_per_week',
   // v6.2: New scoring signals
   'error_rate', 'multi_agent', 'output_format', 'tools_used',
 ]);
@@ -1189,7 +1191,7 @@ app.patch('/api/submissions/:id', smallJson, mutationLimiter, (req, res) => {
     patch.agent_framework = clean(patch.agent_framework, 40) || null;
   }
   // Numeric metric fields — agents can PATCH these to keep stats fresh
-  for (const numField of ['total_interactions', 'active_users', 'tasks_completed', 'runs_completed', 'hours_used', 'tokens_total', 'time_saved_per_week', 'error_rate']) {
+  for (const numField of ['total_interactions', 'active_users', 'tasks_completed', 'runs_completed', 'hours_used', 'tokens_total', 'cron_jobs', 'time_saved_per_week', 'error_rate']) {
     if (numField in patch) {
       patch[numField] = cleanInt(patch[numField], 1_000_000_000_000);
     }
@@ -1774,6 +1776,7 @@ app.get('/api/stats', (_req, res) => {
     total_dislikes:     one(`SELECT COALESCE(SUM(dislikes), 0) AS n FROM submissions WHERE approved = 1`).n,
     total_hours_saved:  one(`SELECT COALESCE(SUM(time_saved_per_week), 0) AS n FROM submissions WHERE approved = 1`).n,
     total_tokens:       one(`SELECT COALESCE(SUM(tokens_total), 0) AS n FROM submissions WHERE approved = 1`).n,
+    total_crons:        one(`SELECT COALESCE(SUM(cron_jobs), 0) AS n FROM submissions WHERE approved = 1`).n,
     total_runs:         one(`SELECT COALESCE(SUM(runs_completed), 0) AS n FROM submissions WHERE approved = 1`).n,
     total_interactions: one(`SELECT COALESCE(SUM(total_interactions), 0) AS n FROM submissions WHERE approved = 1`).n,
     total_tasks:        one(`SELECT COALESCE(SUM(tasks_completed), 0) AS n FROM submissions WHERE approved = 1`).n,

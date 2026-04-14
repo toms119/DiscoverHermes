@@ -406,6 +406,8 @@
       // Absolute metrics (still valuable signals)
       if (item.time_saved_per_week >= 10) badges.push('<span class="achiev" title="Saves 10+ hours/week">⚡ Time Saver</span>');
       if (item.runs_completed >= 500) badges.push('<span class="achiev" title="500+ agent sessions completed">🏆 Powerhouse</span>');
+      if (item.cron_jobs >= 5) badges.push('<span class="achiev" title="5+ cron jobs running">⏰ Cron King</span>');
+      if (item.tokens_total >= 1000000) badges.push('<span class="achiev" title="1M+ total tokens processed">🧠 Token Titan</span>');
       if (item.approx_monthly_tokens >= 1000000) badges.push('<span class="achiev" title="1M+ tokens/month">🧠 Token Beast</span>');
       return badges.slice(0, 2).join('');
     }
@@ -1937,6 +1939,8 @@
       // Absolute metrics
       if (item.time_saved_per_week >= 10) detailAchievements.push({ icon: '⚡', title: 'Time Saver', desc: `Saves ${item.time_saved_per_week}h+ every week` });
       if (item.runs_completed >= 500) detailAchievements.push({ icon: '🏆', title: 'Powerhouse', desc: `${fmtNumber(item.runs_completed)} agent sessions completed` });
+      if (item.cron_jobs >= 5) detailAchievements.push({ icon: '⏰', title: 'Cron King', desc: `${item.cron_jobs} cron jobs running` });
+      if (item.tokens_total >= 1000000) detailAchievements.push({ icon: '🧠', title: 'Token Titan', desc: `${fmtNumber(item.tokens_total)} total tokens processed` });
       if (item.approx_monthly_tokens >= 1000000) detailAchievements.push({ icon: '🧠', title: 'Token Beast', desc: `${fmtNumber(item.approx_monthly_tokens)} tokens/mo` });
       if (item.verified) detailAchievements.push({ icon: '✅', title: 'Verified', desc: 'Builder-verified agent' });
       if (item.running_since) {
