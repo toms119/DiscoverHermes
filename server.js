@@ -171,6 +171,9 @@ const DESIRED_COLUMNS = {
   reliability:           'TEXT',          // high | medium | low | wip
   source_available:      'TEXT',          // fully-open | partial-gist | prompt-only | closed
   github_url:            'TEXT',          // https://github.com/...
+  github_stars:          'INTEGER',       // cached star count from GitHub API
+  github_forks:          'INTEGER',       // cached fork count from GitHub API
+  github_updated_at:      'TEXT',          // last time we fetched stats
   image_prompt:          'TEXT',
   // Secondary gallery (max 5) — the hero image_url is the primary, this
   // is for screenshots of dashboards, terminal captures, extra generated
