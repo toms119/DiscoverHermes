@@ -91,6 +91,13 @@ a { color: inherit; text-decoration: none; }
   flex-wrap: wrap;
   justify-content: flex-end;
 }
+.site-header nav .primary {
+  background: #4f6ef7;
+  color: #fff;
+}
+.site-header nav .primary:hover {
+  background: #3d5ce4;
+}
 @media (max-width: 900px) {
   .site-header {
     flex-wrap: wrap;
